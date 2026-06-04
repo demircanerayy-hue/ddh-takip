@@ -902,9 +902,10 @@ select.fi{cursor:pointer;background:var(--bg2);}
 <!-- GÜNLÜK DELGİ -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="page" id="page-gunluk">
-  <div class="stabs" id="mak-tabs" style="justify-content:space-between;align-items:center;">
+  <div class="stabs" id="mak-tabs" style="justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px;">
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      <div class="stab active" onclick="goMak('GS-200',this)">GS-200</div>
+      <div class="stab active" onclick="goMakTumu(this)">Tümü</div>
+      <div class="stab" onclick="goMak('GS-200',this)">GS-200</div>
       <div class="stab" onclick="goMak('DBC-U6',this)">DBC-U6</div>
       <div class="stab" onclick="goMak('BATUHAN-600X',this)">BATUHAN-600X</div>
       <div class="stab" onclick="goMak('GS-600',this)">GS-600</div>
@@ -912,8 +913,9 @@ select.fi{cursor:pointer;background:var(--bg2);}
     </div>
     <button class="btn btn-p" id="vardiya-ekle-btn" onclick="openVar(window.aktifMakine)" style="flex-shrink:0;">+ Vardiya Girişi</button>
   </div>
-  <div id="mak-pages"></div>
-
+  <div id="tumu-wrap"></div>
+  <div id="mak-pages" style="display:none"></div>
+  <div id="vardiya-perf-wrap" style="margin-top:18px"></div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
@@ -993,11 +995,6 @@ select.fi{cursor:pointer;background:var(--bg2);}
     <div class="sh" style="margin-bottom:16px"><span class="sh-t">Aylık Delgi Trendi (Tüm Yıl)</span><div class="sh-l"></div></div>
     <div id="ozet-yillik-wrap" style="overflow-x:auto"></div>
   </div>
-
-
-</div>
-
-</div><!-- /main -->
 
 <!-- ══════════════════════════════════════════════════════════ -->
 <!-- MODAL: KUYU EKLE/DÜZENLE -->
@@ -1622,7 +1619,11 @@ function goPage(id, el){
   el.classList.add('active');
   if(id==='dash') renderDash();
   if(id==='kuyular') renderKuyular();
-  if(id==='gunluk'){ buildMakPages(); renderMak(aktifMakine); }
+  if(id==='gunluk'){
+    buildMakPages();
+    const tumuTab = document.querySelector('#mak-tabs .stab');
+    if(tumuTab) goMakTumu(tumuTab);
+  }
   if(id==='durak') renderDurak();
   if(id==='ozet'){ loadButce(); renderOzetPage(); }
 }
@@ -1851,7 +1852,63 @@ function renderHakedis(){ /* hakedis sayfası kaldırıldı */ }
 function drawHakedisTrend(){ }
 function drawHakedisMakine(){ }
 
-function renderVardiyaPerf(){ /* kaldırıldı */ }
+// ── VARDİYA BAZLI PERFORMANS GRAFİĞİ ────────────────────────
+function renderVardiyaPerf(){
+  const ayRecs = db.gunluk.filter(r => ayFiltre(r.tarih));
+  const wrap = document.getElementById('vardiya-perf-wrap');
+  if(!wrap) return;
+
+  const rows = MAKINELER.map(m => {
+    const mRecs = ayRecs.filter(r => r.makine === m);
+    const v1ay = mRecs.reduce((s,r) => s+(parseFloat(r.s1)||0), 0);
+    const v2ay = mRecs.reduce((s,r) => s+(parseFloat(r.s2)||0), 0);
+    const v3ay = mRecs.reduce((s,r) => s+(parseFloat(r.s3)||0), 0);
+    const sonRec = mRecs.slice().sort((a,b)=>b.tarih.localeCompare(a.tarih))[0];
+    const sg1 = sonRec ? (parseFloat(sonRec.s1)||0) : 0;
+    const sg2 = sonRec ? (parseFloat(sonRec.s2)||0) : 0;
+    const sg3 = sonRec ? (parseFloat(sonRec.s3)||0) : 0;
+    return { m, sg1, sg2, sg3, v1ay, v2ay, v3ay };
+  }).filter(r => r.v1ay+r.v2ay+r.v3ay > 0);
+
+  if(!rows.length){
+    wrap.innerHTML = '<p style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Bu ay veri yok</p>';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="sc-lbl" style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2);margin-bottom:10px">VARDİYA PERFORMANS TABLOSU</div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th style="min-width:120px">Makine</th>
+        <th style="min-width:80px">Vardiya</th>
+        <th class="c" style="min-width:100px">Günlük Metre</th>
+        <th class="c" style="min-width:100px">Aylık Metre</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => {
+          const rc = MAKINE_RENK[r.m] || '#94a3b8';
+          return [
+            `<tr style="border-left:3px solid ${rc}">
+              <td rowspan="3"><span class="kn" style="font-size:11px;color:${rc}">${esc(r.m)}</span></td>
+              <td><span class="v1-tag" style="font-size:10px">00:00—08:00</span></td>
+              <td class="c"><span class="nv" style="font-size:12px">${r.sg1.toFixed(2)}</span></td>
+              <td class="c"><span class="nv g" style="font-size:12px">${r.v1ay.toFixed(2)}</span></td>
+            </tr>`,
+            `<tr>
+              <td><span class="v2-tag" style="font-size:10px">08:00—16:00</span></td>
+              <td class="c"><span class="nv" style="font-size:12px">${r.sg2.toFixed(2)}</span></td>
+              <td class="c"><span class="nv g" style="font-size:12px">${r.v2ay.toFixed(2)}</span></td>
+            </tr>`,
+            `<tr style="border-bottom:2px solid var(--border2)">
+              <td><span class="v3-tag" style="font-size:10px">16:00—00:00</span></td>
+              <td class="c"><span class="nv" style="font-size:12px">${r.sg3.toFixed(2)}</span></td>
+              <td class="c"><span class="nv g" style="font-size:12px">${r.v3ay.toFixed(2)}</span></td>
+            </tr>`
+          ].join('');
+        }).join('')}
+      </tbody>
+    </table></div>`;
+}
 
 function drawPie(){
   const wrap = document.getElementById('pie-chart-wrap');
@@ -1975,6 +2032,10 @@ function buildMakPages(){
 function goMak(m, el){
   aktifMakine = m;
   window.aktifMakine = m;
+  // Tümü gizle, makine sayfasını göster
+  document.getElementById('tumu-wrap').innerHTML = '';
+  document.getElementById('mak-pages').style.display = '';
+  document.getElementById('vardiya-ekle-btn').style.display = '';
   renderVardiyaPerf();
   document.querySelectorAll('#mak-pages .spg').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('#mak-tabs .stab').forEach(t=>t.classList.remove('active'));
@@ -1983,6 +2044,69 @@ function goMak(m, el){
   el.classList.add('active');
   renderMak(m);
 }
+
+function goMakTumu(el){
+  // Makine sayfalarını gizle, tumu-wrap göster
+  document.getElementById('mak-pages').style.display = 'none';
+  document.getElementById('vardiya-ekle-btn').style.display = 'none';
+  document.querySelectorAll('#mak-tabs .stab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderTumu();
+  renderVardiyaPerf();
+}
+
+function renderTumu(){
+  const wrap = document.getElementById('tumu-wrap');
+  if(!wrap) return;
+
+  // Seçili aya ait kayıtlar — tarih ASC (ay başı üstte)
+  const ayRecs = db.gunluk
+    .filter(r => ayFiltre(r.tarih))
+    .slice()
+    .sort((a,b) => a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : 0);
+
+  if(!ayRecs.length){
+    wrap.innerHTML = '<p style="color:var(--text3);font-size:12px;text-align:center;padding:24px">Bu ay kayıt yok</p>';
+    return;
+  }
+
+  wrap.innerHTML = `<div class="tw"><table>
+    <thead><tr>
+      <th style="min-width:90px">Tarih</th>
+      <th style="min-width:110px">Makine</th>
+      <th style="min-width:100px">Llokasyon</th>
+      <th style="min-width:140px">Sondaj Adı</th>
+      <th class="c" style="min-width:90px;color:var(--v1b);border-top:2px solid var(--v1b)">00:00–08:00</th>
+      <th class="c" style="min-width:90px;color:var(--v2b);border-top:2px solid var(--v2b)">08:00–16:00</th>
+      <th class="c" style="min-width:90px;color:var(--v3b);border-top:2px solid var(--v3b)">16:00–00:00</th>
+      <th class="c" style="min-width:90px;color:var(--gold)">Günlük (m)</th>
+      <th style="min-width:90px">Depth (m)</th>
+    </tr></thead>
+    <tbody>
+    ${ayRecs.map(r=>{
+      const s1=parseFloat(r.s1)||0, s2=parseFloat(r.s2)||0, s3=parseFloat(r.s3)||0;
+      const toplam=s1+s2+s3;
+      const rc=MAKINE_RENK[r.makine]||'#94a3b8';
+      const sondajCell=r.sondaj&&r.sondaj.includes('/')
+        ?`<span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0])}</span><span style="margin:0 4px;color:var(--text3)">→</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1])}</span>`
+        :`<span class="kn" style="font-size:11px">${esc(r.sondaj||'—')}</span>`;
+      const vCell=v=>v>0
+        ?`<td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;color:var(--text)">${parseFloat(v).toFixed(2)}</span></td>`
+        :`<td class="c" style="color:var(--text3)">—</td>`;
+      return `<tr>
+        <td><span class="dv">${fmtDate(r.tarih)}</span></td>
+        <td><span class="kn" style="font-size:11px;color:${rc}">${esc(r.makine)}</span></td>
+        <td><span style="color:var(--text2);font-size:11px">${esc(r.llokasyon||'—')}</span></td>
+        <td>${sondajCell}</td>
+        ${vCell(r.s1)}${vCell(r.s2)}${vCell(r.s3)}
+        <td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--green)">${toplam.toFixed(2)}</span></td>
+        <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700">${r.depth!=null?parseFloat(r.depth).toFixed(2):'—'}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table></div>`;
+}
+
 
 function renderMak(m){
   const key = m.replace(/[^a-z0-9]/gi,'_');
@@ -2725,6 +2849,7 @@ function renderOzetPage(){
   // Bütçe vs Gerçekleşen SVG bar grafiği
   drawButceGerceklesen(yil, butce);
   drawOzetYillik(yil);
+  drawOzetMakCeyrek(yil);
 }
 
 // ── Profesyonel SVG bar yardımcısı ──────────────────────────
@@ -2855,7 +2980,54 @@ function drawOzetYillik(yil){
   </svg></div>`;
 }
 
-function drawOzetMakCeyrek(){ /* kaldırıldı */ }
+function drawOzetMakCeyrek(yil){
+  const wrap=document.getElementById('ozet-mak-ceyrek-wrap');
+  if(!wrap) return;
+
+  const qs=['Q1','Q2','Q3','Q4'];
+  const mData=MAKINELER.map(m=>({
+    m, color:MAKINE_RENK[m]||'#94a3b8',
+    vals:qs.map(q=>getCeyrekMetraj(q,yil))
+  })).filter(d=>d.vals.some(v=>v>0));
+
+  if(!mData.length){wrap.innerHTML='<p style="color:var(--text3);font-size:12px;padding:16px;text-align:center">Veri yok</p>';return;}
+
+  const allVals=mData.flatMap(d=>d.vals);
+  const maxVal=Math.max(...allVals,1);
+  const PAD_L=52,PAD_T=16,PAD_B=48,BW=20,GAP=4,GRP_GAP=24;
+  const grpW=mData.length*(BW+GAP)+GRP_GAP;
+  const W=PAD_L+qs.length*grpW+16;
+  const H=PAD_T+180+PAD_B;
+  const CH=180;
+
+  let grid='',yTicks='',bars='',xlabels='';
+  [0,0.25,0.5,0.75,1].forEach(r=>{
+    const y=PAD_T+CH*(1-r);
+    grid   +=`<line x1="${PAD_L}" y1="${y}" x2="${W-8}" y2="${y}" stroke="#f0f0f2" stroke-width="1"/>`;
+    yTicks +=`<text x="${PAD_L-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="IBM Plex Mono,monospace">${Math.round(maxVal*r)}</text>`;
+  });
+
+  qs.forEach((q,qi)=>{
+    const gx=PAD_L+qi*grpW;
+    mData.forEach((ds,mi)=>{
+      const v=ds.vals[qi];
+      const h=Math.max(3,Math.round((v/maxVal)*CH));
+      const x=gx+mi*(BW+GAP);
+      bars+=`<rect x="${x}" y="${PAD_T+CH-h}" width="${BW}" height="${h}" fill="${ds.color}" rx="3"><title>${ds.m} — ${q}: ${v.toFixed(0)} m</title></rect>`;
+      if(v>0&&h>18) bars+=`<text x="${x+BW/2}" y="${PAD_T+CH-h-3}" text-anchor="middle" font-size="7.5" fill="${ds.color}" font-weight="600" font-family="IBM Plex Mono,monospace">${v.toFixed(0)}</text>`;
+    });
+    const gcx=gx+mData.length*(BW+GAP)/2-GAP/2;
+    const clr=CEYREK_RENK[q];
+    xlabels+=`<text x="${gcx}" y="${PAD_T+CH+17}" text-anchor="middle" font-size="11" fill="${clr}" font-weight="700">${q}</text>`;
+  });
+
+  const legend=mData.map(ds=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#6b7280"><span style="width:10px;height:10px;border-radius:2px;background:${ds.color};display:inline-block"></span>${ds.m}</span>`).join('');
+
+  wrap.innerHTML=`<div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">${legend}</div>
+  <div style="overflow-x:auto"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    ${grid}${yTicks}${bars}${xlabels}
+  </svg></div>`;
+}
 
 
 function renderUyarilar(){
@@ -3162,6 +3334,7 @@ document.addEventListener('keydown',e=>{
 // module scope → global (onclick için)
 window.goPage       = goPage;
 window.goMak        = goMak;
+window.goMakTumu    = goMakTumu;
 window.toggleDropdown = toggleDropdown;
 window.seciAy       = seciAy;
 window.seciHafta    = seciHafta;
