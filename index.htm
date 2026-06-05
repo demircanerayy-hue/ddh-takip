@@ -886,6 +886,7 @@ th:hover .sort-ico{opacity:1;}
         <th style="min-width:68px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('az')">Azimut <span class="sort-ico" id="si-az">⇅</span></th>
         <th style="min-width:60px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('eg')">Eğim <span class="sort-ico" id="si-eg">⇅</span></th>
         <th style="min-width:100px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('der')">Derinlik (m) <span class="sort-ico" id="si-der">⇅</span></th>
+
         <th style="min-width:110px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('bkotu')">Bitiş Kotu (m) <span class="sort-ico" id="si-bkotu">⇅</span></th>
         <th style="min-width:68px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('cap')">Çap <span class="sort-ico" id="si-cap">⇅</span></th>
         <th style="min-width:80px;cursor:pointer;white-space:nowrap" onclick="sortKuyular('saha')">Saha <span class="sort-ico" id="si-saha">⇅</span></th>
@@ -1023,6 +1024,7 @@ th:hover .sort-ico{opacity:1;}
     <div class="ff"><label class="fl">Azimut (°)</label><input class="fi" type="number" id="k-az" placeholder="180"></div>
     <div class="ff"><label class="fl">Eğim (°)</label><input class="fi" type="number" id="k-eg" placeholder="-60"></div>
     <div class="ff"><label class="fl">Planlanan Derinlik (m)</label><input class="fi" type="number" id="k-der" placeholder="300"></div>
+    <div class="ff"><label class="fl">Güncel Metraj (m)</label><input class="fi" type="number" id="k-guncel" placeholder="0"></div>
     <div class="ff"><label class="fl">Kuyu Çapı</label><input class="fi" id="k-cap" placeholder="NW / HW"></div>
     <div class="slbl">Koordinatlar &amp; Konum</div>
     <div class="ff"><label class="fl">Y</label><input class="fi" type="number" id="k-y" placeholder="645000.00"></div>
@@ -2030,6 +2032,7 @@ function kuyuRow(k){
         ${isAktif && k.der > 0 ? `<div class="mbar-bg"><div class="mbar-fg" style="width:${pct}%;background:${pc}"></div></div><span class="mbar-txt">${pct}% · plan ${k.der!=null ? parseFloat(k.der).toFixed(2) : '—'} m</span>` : '' }
       </div>
     </td>
+
     <td class="nv">${bitisKotuGoster}</td>
     <td class="nv">${esc(k.cap||'—')}</td>
     <td><span class="mt">${esc(k.saha||'—')}</span></td>
@@ -2335,7 +2338,7 @@ function autoSaha(){
 function openKuyu(){
   editKId = null;
   document.getElementById('m-kuyu-title').textContent = 'Yeni Kuyu Ekle';
-  ['k-no','k-az','k-eg','k-der','k-cap','k-y','k-x','k-z','k-mev','k-saha','k-su','k-bar'].forEach(id=>{
+  ['k-no','k-az','k-eg','k-der','k-guncel','k-cap','k-y','k-x','k-z','k-mev','k-saha','k-su','k-bar'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('k-bas').value = aktifAy+'-01';
@@ -2354,6 +2357,7 @@ function editKuyu(id){
   document.getElementById('k-az').value   = k.az||'';
   document.getElementById('k-eg').value   = k.eg||'';
   document.getElementById('k-der').value  = k.der||'';
+  document.getElementById('k-guncel').value = k.guncel||'';
   document.getElementById('k-cap').value  = k.cap||'';
   document.getElementById('k-y').value    = k.y||'';
   document.getElementById('k-x').value    = k.x||'';
@@ -2377,6 +2381,7 @@ function saveKuyu(){
     az:  document.getElementById('k-az').value,
     eg:  document.getElementById('k-eg').value,
     der: parseFloat(document.getElementById('k-der').value)||0,
+    guncel: parseFloat(document.getElementById('k-guncel').value)||0,
     cap: document.getElementById('k-cap').value.trim(),
     y:   parseFloat(document.getElementById('k-y').value)||0,
     x:   parseFloat(document.getElementById('k-x').value)||0,
@@ -3086,14 +3091,16 @@ function renderUyarilar(){
   const uyarilar = [];
 
   db.kuyular.filter(k=>isAktifKuyu(k)).forEach(k=>{
-    const met = aktifMetraj(k.no);
-    const plan = parseFloat(k.der)||0;
-    if(plan>0){
-      const pct = met/plan*100;
-      if(pct>=90){
-        uyarilar.push({tip:'kirmizi', ikon:'⚠', mesaj:`<strong>${k.no}</strong> planlanan derinliğe <strong>${(plan-met).toFixed(2)}m</strong> kaldı (${Math.round(pct)}%)`});
-      } else if(pct>=75){
-        uyarilar.push({tip:'sari', ikon:'⚡', mesaj:`<strong>${k.no}</strong> planlanan derinliğin %${Math.round(pct)}'inde`});
+    const plan    = parseFloat(k.der)||0;
+    const guncel  = parseFloat(k.guncel)||0;
+    if(plan > 0 && guncel > 0){
+      const pct = guncel / plan * 100;
+      if(guncel >= plan){
+        uyarilar.push({tip:'kirmizi', ikon:'⚠', mesaj:`<strong>${k.no}</strong> güncel metraj (${guncel.toFixed(2)} m) planlanan derinliğe (${plan.toFixed(2)} m) ulaştı veya aştı`});
+      } else if(pct >= 90){
+        uyarilar.push({tip:'kirmizi', ikon:'⚠', mesaj:`<strong>${k.no}</strong> planlanan derinliğe <strong>${(plan-guncel).toFixed(2)} m</strong> kaldı (%${Math.round(pct)})`});
+      } else if(pct >= 75){
+        uyarilar.push({tip:'sari', ikon:'⚡', mesaj:`<strong>${k.no}</strong> planlanan derinliğin %${Math.round(pct)}'inde (${guncel.toFixed(2)} / ${plan.toFixed(2)} m)`});
       }
     }
   });
