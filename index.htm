@@ -2513,7 +2513,23 @@ function saveVar(){
   const lok   = document.getElementById('v-lok').value.trim();
   const not_  = document.getElementById('v-not').value.trim();
 
-  // Aynı makine + aynı tarih + aynı kuyu → mevcut satırı güncelle
+  // EDIT MODU: ID ile direkt güncelle, asla toplama yapma
+  if(editVarId !== null){
+    const idx = db.gunluk.findIndex(r=>r.id===editVarId);
+    if(idx !== -1){
+      db.gunluk[idx] = {...db.gunluk[idx],
+        tarih, sondaj, Lokasyon: lok,
+        s1, s2, s3,
+        not: not_,
+        toplam: (s1??0)+(s2??0)+(s3??0)
+      };
+    }
+    editVarId = null;
+    save(); closeVar(); renderMak(varMakine); renderDash();
+    return;
+  }
+
+  // YENİ KAYIT: Aynı makine+tarih+kuyu varsa vardiyayı doldur, yoksa yeni ekle
   const existing = db.gunluk.find(r =>
     r.makine === varMakine &&
     r.tarih  === tarih &&
@@ -2521,50 +2537,23 @@ function saveVar(){
   );
 
   if(existing){
-    // Dolu olan vardiyayı üzerine yazma, boş olanı doldur
-    if(s1 != null){ existing.s1 = (existing.s1||0) + s1; }
-    if(s2 != null){ existing.s2 = (existing.s2||0) + s2; }
-    if(s3 != null){ existing.s3 = (existing.s3||0) + s3; }
-    existing.toplam = (existing.s1||0)+(existing.s2||0)+(existing.s3||0);
-    if(depth != null) existing.depth = depth;
-    if(lok)   existing.Lokasyon = lok;
-    if(not_)  existing.not = not_;
+    if(s1 !== null) existing.s1 = s1;
+    if(s2 !== null) existing.s2 = s2;
+    if(s3 !== null) existing.s3 = s3;
+    existing.toplam = (existing.s1??0)+(existing.s2??0)+(existing.s3??0);
+    if(lok)  existing.Lokasyon = lok;
+    if(not_) existing.not = not_;
   } else {
-    if(editVarId !== null){
-    const idx = db.gunluk.findIndex(r=>r.id===editVarId);
-    if(idx !== -1){
-      db.gunluk[idx] = {...db.gunluk[idx], tarih:document.getElementById('v-tarih').value,
-        sondaj:document.getElementById('v-sondaj').value.trim(),
-        Lokasyon:document.getElementById('v-lok').value.trim(),
-        s1:parseFloat(document.getElementById('v-s1').value)||null,
-        s2:parseFloat(document.getElementById('v-s2').value)||null,
-        s3:parseFloat(document.getElementById('v-s3').value)||null,
-        depth:parseFloat(document.getElementById('v-depth').value)||null,
-        not:document.getElementById('v-not').value.trim(),
-        toplam:(parseFloat(document.getElementById('v-s1').value)||0)+(parseFloat(document.getElementById('v-s2').value)||0)+(parseFloat(document.getElementById('v-s3').value)||0)
-      };
-    }
-    editVarId = null;
-    save(); closeVar(); renderMak(varMakine); renderDash();
-    return;
-  }
-  db.gunluk.push({
-      id: uid(),
-      makine:   varMakine,
-      tarih,
-      Lokasyon: lok,
-      sondaj,
+    db.gunluk.push({
+      id: uid(), makine: varMakine, tarih,
+      Lokasyon: lok, sondaj,
       s1, s2, s3,
-      toplam: (s1||0)+(s2||0)+(s3||0),
-      depth,
-      not: not_
+      toplam: (s1??0)+(s2??0)+(s3??0),
+      depth: null, not: not_
     });
   }
 
-  save();
-  closeVar();
-  renderMak(varMakine);
-  renderDash();
+  save(); closeVar(); renderMak(varMakine); renderDash();
 }
 
 function delGunluk(id){
