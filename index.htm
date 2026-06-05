@@ -1081,10 +1081,6 @@ th:hover .sort-ico{opacity:1;}
       <label class="fl"><span class="v3-tag">16:00 — 00:00</span></label>
       <input class="fi" type="number" step="0.5" id="v-s3" placeholder="0.0">
     </div>
-    <div class="ff">
-      <label class="fl">Mevcut Derinlik / Depth (m)</label>
-      <input class="fi" type="number" step="0.5" id="v-depth" placeholder="0.0">
-    </div>
     <div class="ff full">
       <label class="fl">Durum Notu</label>
       <input class="fi" id="v-not" placeholder="Kuyu sonu, başlangıç, özel durum...">
@@ -2079,7 +2075,6 @@ function buildMakPages(){
           <th class="c" style="min-width:90px;color:var(--v2b);border-top:2px solid var(--v2b)">08:00–16:00</th>
           <th class="c" style="min-width:90px;color:var(--v3b);border-top:2px solid var(--v3b)">16:00–00:00</th>
           <th class="c" style="min-width:90px;color:var(--gold)">Günlük (m)</th>
-          <th style="min-width:90px">Depth (m)</th>
           <th style="min-width:180px">Durum Notu</th>
           <th style="min-width:40px"></th>
         </tr></thead>
@@ -2139,7 +2134,6 @@ function renderTumu(){
       <th class="c" style="min-width:90px;color:var(--v2b);border-top:2px solid var(--v2b)">08:00–16:00</th>
       <th class="c" style="min-width:90px;color:var(--v3b);border-top:2px solid var(--v3b)">16:00–00:00</th>
       <th class="c" style="min-width:90px;color:var(--gold)">Günlük (m)</th>
-      <th style="min-width:90px">Depth (m)</th>
     </tr></thead>
     <tbody>
     ${ayRecs.map(r=>{
@@ -2147,7 +2141,7 @@ function renderTumu(){
       const toplam=s1+s2+s3;
       const rc=MAKINE_RENK[r.makine]||'#94a3b8';
       const sondajCell=r.sondaj&&r.sondaj.includes('/')
-        ?`<span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0])}</span><span style="margin:0 4px;color:var(--text3)">→</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1])}</span>`
+        ?`<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#ef4444;font-weight:700" title="Biten kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0].trim())}</span></div><div style="padding-left:4px;color:var(--text3);font-size:10px;line-height:1">↓</div><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#22c55e;font-weight:700" title="Başlayan kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1].trim())}</span></div></div>`
         :`<span class="kn" style="font-size:11px">${esc(r.sondaj||'—')}</span>`;
       const vCell=v=>v>0
         ?`<td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;color:var(--text)">${parseFloat(v).toFixed(2)}</span></td>`
@@ -2159,11 +2153,6 @@ function renderTumu(){
         <td>${sondajCell}</td>
         ${vCell(r.s1)}${vCell(r.s2)}${vCell(r.s3)}
         <td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--green)">${toplam.toFixed(2)}</span></td>
-        <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700">${(()=>{
-          const kNo=(r.sondaj||'').includes('/')?(r.sondaj||'').split('/').pop().trim():(r.sondaj||'').trim();
-          const kDep=db.gunluk.filter(x=>x.makine===r.makine&&x.tarih<=r.tarih&&(x.sondaj||'').split('/').map(s=>s.trim()).includes(kNo)).reduce((sum,x)=>sum+(x.s1??0)+(x.s2??0)+(x.s3??0),0);
-          return kDep>0?parseFloat(kDep.toFixed(2)).toFixed(2):'—';
-        })()}</td>
       </tr>`;
     }).join('')}
     </tbody>
@@ -2233,11 +2222,19 @@ function renderMak(m){
       </td>`;
     }
 
-    // Kuyu değişimi göster
+    // Kuyu değişimi göster: biten kuyu üstte, başlayan kuyu altta
     const sondajCell = r.sondaj && r.sondaj.includes('/')
-      ? `<span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0])}</span>
-         <span class="kuyu-split" style="margin:0 4px">→</span>
-         <span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1])}</span>`
+      ? `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+           <div style="display:flex;align-items:center;gap:4px">
+             <span style="font-size:9px;color:#ef4444;font-weight:700" title="Biten kuyu">■</span>
+             <span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0].trim())}</span>
+           </div>
+           <div style="padding-left:4px;color:var(--text3);font-size:10px;line-height:1">↓</div>
+           <div style="display:flex;align-items:center;gap:4px">
+             <span style="font-size:9px;color:#22c55e;font-weight:700" title="Başlayan kuyu">■</span>
+             <span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1].trim())}</span>
+           </div>
+         </div>`
       : `<span class="kn" style="font-size:11px">${esc(r.sondaj||'—')}</span>`;
 
     return `<tr>
@@ -2248,11 +2245,6 @@ function renderMak(m){
       ${vCell(s2,2)}
       ${vCell(s3,3)}
       <td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--green);letter-spacing:-0.02em">${toplam.toFixed(2)}</span></td>
-      <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700;letter-spacing:-0.02em">${(()=>{
-        const kNo=(r.sondaj||'').includes('/')?(r.sondaj||'').split('/').pop().trim():(r.sondaj||'').trim();
-        const kDep=db.gunluk.filter(x=>x.makine===m&&x.tarih<=r.tarih&&(x.sondaj||'').split('/').map(s=>s.trim()).includes(kNo)).reduce((sum,x)=>sum+(x.s1??0)+(x.s2??0)+(x.s3??0),0);
-        return kDep>0?parseFloat(kDep.toFixed(2)).toFixed(2):'—';
-      })()}</td>
       <td style="color:var(--text3);font-size:11px;max-width:200px;white-space:normal">${esc(r.not||'')}</td>
       <td style="white-space:nowrap">
         <button class="btn" style="padding:3px 7px;font-size:12px;background:none;border:1px solid var(--border2);border-radius:6px;cursor:pointer;margin-right:3px" title="Düzenle" onclick="editVar(${r.id})">✏️</button>
