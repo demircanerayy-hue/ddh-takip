@@ -1055,12 +1055,7 @@ th:hover .sort-ico{opacity:1;}
 
     <div class="slbl">Kuyu Bilgisi</div>
     <div class="ff"><label class="fl">Sondaj Adı</label>
-      <input class="fi" id="v-sondaj" placeholder="BYA-928 veya BYA-927/BYA-928" list="vkl" oninput="
-        const tarihVal = document.getElementById('v-tarih').value;
-        const sd = sonDepthBul(this.value.trim(), varMakine, tarihVal);
-        const el = document.getElementById('v-depth');
-        el.value = sd != null ? sd.toFixed(2) : '';
-      ">
+      <input class="fi" id="v-sondaj" placeholder="BYA-928 veya BYA-927/BYA-928" list="vkl">
       <datalist id="vkl"></datalist>
       <span style="font-size:11px;color:var(--text3);margin-top:3px">Kuyu değişimi varsa: BYA-927/BYA-928</span>
     </div>
@@ -2269,11 +2264,6 @@ function editVar(id){
   document.getElementById('v-s1').value      = r.s1 != null ? r.s1 : '';
   document.getElementById('v-s2').value      = r.s2 != null ? r.s2 : '';
   document.getElementById('v-s3').value      = r.s3 != null ? r.s3 : '';
-  document.getElementById('v-depth').value   = r.depth != null ? parseFloat(r.depth).toFixed(2) : '';
-  // Düzenleme modunda depth manuel girilebilir
-  const depthElEdit = document.getElementById('v-depth');
-  depthElEdit.readOnly = false;
-  depthElEdit.style.color = '';
   document.getElementById('v-not').value     = r.not||'';
   document.getElementById('m-var').classList.add('open');
 }
@@ -2443,16 +2433,6 @@ function openVar(m){
   ['v-s1','v-s2','v-s3','v-not'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
-  // Mevcut derinliği son kayıttan bul — sadece göster, readonly
-  const bugün = new Date().toISOString().split('T')[0];
-  const sonDepth = sonDepthBul(sondajNo, m, bugün);
-  const depthEl = document.getElementById('v-depth');
-  depthEl.value = sonDepth != null ? sonDepth.toFixed(2) : '';
-  depthEl.readOnly = true;
-  depthEl.style.color = 'var(--text3)';
-  depthEl.style.fontFamily = 'IBM Plex Mono, monospace';
-  depthEl.style.fontWeight = '700';
-  depthEl.title = 'Otomatik hesaplanır: Önceki depth + vardiya toplamı';
   document.getElementById('m-var').classList.add('open');
 }
 
