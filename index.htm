@@ -2159,7 +2159,11 @@ function renderTumu(){
         <td>${sondajCell}</td>
         ${vCell(r.s1)}${vCell(r.s2)}${vCell(r.s3)}
         <td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--green)">${toplam.toFixed(2)}</span></td>
-        <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700">${r.depth!=null?parseFloat(r.depth).toFixed(2):'—'}</td>
+        <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700">${(()=>{
+          const kNo=(r.sondaj||'').includes('/')?(r.sondaj||'').split('/').pop().trim():(r.sondaj||'').trim();
+          const kDep=db.gunluk.filter(x=>x.makine===r.makine&&x.tarih<=r.tarih&&(x.sondaj||'').split('/').map(s=>s.trim()).includes(kNo)).reduce((sum,x)=>sum+(x.s1??0)+(x.s2??0)+(x.s3??0),0);
+          return kDep>0?parseFloat(kDep.toFixed(2)).toFixed(2):'—';
+        })()}</td>
       </tr>`;
     }).join('')}
     </tbody>
@@ -2244,7 +2248,11 @@ function renderMak(m){
       ${vCell(s2,2)}
       ${vCell(s3,3)}
       <td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--green);letter-spacing:-0.02em">${toplam.toFixed(2)}</span></td>
-      <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700;letter-spacing:-0.02em">${r.depth != null ? parseFloat(r.depth).toFixed(2) : '—'}</td>
+      <td class="nv" style="font-family:IBM Plex Mono,monospace;font-weight:700;letter-spacing:-0.02em">${(()=>{
+        const kNo=(r.sondaj||'').includes('/')?(r.sondaj||'').split('/').pop().trim():(r.sondaj||'').trim();
+        const kDep=db.gunluk.filter(x=>x.makine===m&&x.tarih<=r.tarih&&(x.sondaj||'').split('/').map(s=>s.trim()).includes(kNo)).reduce((sum,x)=>sum+(x.s1??0)+(x.s2??0)+(x.s3??0),0);
+        return kDep>0?parseFloat(kDep.toFixed(2)).toFixed(2):'—';
+      })()}</td>
       <td style="color:var(--text3);font-size:11px;max-width:200px;white-space:normal">${esc(r.not||'')}</td>
       <td style="white-space:nowrap">
         <button class="btn" style="padding:3px 7px;font-size:12px;background:none;border:1px solid var(--border2);border-radius:6px;cursor:pointer;margin-right:3px" title="Düzenle" onclick="editVar(${r.id})">✏️</button>
