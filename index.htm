@@ -2112,7 +2112,7 @@ function renderTumu(){
   const ayRecs = db.gunluk
     .filter(r => ayFiltre(r.tarih))
     .slice()
-    .sort((a,b) => a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : 0);
+    .sort((a,b) => a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : (a.id||0)-(b.id||0));
 
   if(!ayRecs.length){
     wrap.innerHTML = '<p style="color:var(--text3);font-size:12px;text-align:center;padding:24px">Bu ay kayıt yok</p>';
@@ -2189,7 +2189,7 @@ function renderMak(m){
 
   // Kayıtlar — günlük yapı (s1/s2/s3 yan yana)
   const recs = db.gunluk.filter(r => r.makine===m && r.tarih && r.tarih.startsWith(aktifAy))
-    .sort((a,b) => a.tarih > b.tarih ? 1 : -1);
+    .sort((a,b) => a.tarih > b.tarih ? 1 : a.tarih < b.tarih ? -1 : (a.id||0)-(b.id||0));
 
   const tbody = document.getElementById('mak-tbody-'+key);
   if(!tbody) return;
