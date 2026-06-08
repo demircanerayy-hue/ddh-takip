@@ -234,6 +234,88 @@ function setStatus(ok, msg){
   el.textContent = msg;
 }
 
+const LOCAL_BACKUP_KEY = 'ddh-takip-data-v1';
+
+function firebasePayload(){
+  const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>k.id)) : 0;
+  const kuyular_user = db.kuyular.filter(k => k.id > maxPre);
+  const kuyular_updates = db.kuyular
+    .filter(k => k.id <= maxPre && k.bit)
+    .map(k => ({id: k.id, bit: k.bit}));
+  return {
+    gunluk:          db.gunluk,
+    duraklamalar:    db.duraklamalar,
+    kuyular:         db.kuyular,
+    kuyular_user,
+    kuyular_updates,
+    nextId,
+    butce:           db.butce || {},
+    at: new Date().toISOString()
+  };
+}
+
+function saveLocalBackup(payload){
+  try{
+    localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(payload || firebasePayload()));
+  }catch(e){
+    console.warn('Yerel yedek kaydedilemedi:', e);
+  }
+}
+
+function readLocalBackup(){
+  try{
+    const raw = localStorage.getItem(LOCAL_BACKUP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){
+    console.warn('Yerel yedek okunamadı:', e);
+    return null;
+  }
+}
+
+function newerData(firebaseData, localData){
+  if(!firebaseData) return localData || null;
+  if(!localData) return firebaseData;
+  const fbTime = Date.parse(firebaseData.at || '') || 0;
+  const localTime = Date.parse(localData.at || '') || 0;
+  return localTime > fbTime ? localData : firebaseData;
+}
+
+function applySavedData(data){
+  if(!data) return false;
+  const fbGunluk = data.gunluk || [];
+  if(fbGunluk.length){
+    const fbIds = new Set(fbGunluk.map(r => r.id));
+    const eksik = PRELOADED_GUNLUK.filter(r => !fbIds.has(r.id));
+    db.gunluk = [...eksik, ...fbGunluk];
+  } else {
+    db.gunluk = [...PRELOADED_GUNLUK];
+  }
+  normalizeDbMakineAdlari();
+  db.duraklamalar = data.duraklamalar || [];
+  normalizeDbMakineAdlari();
+  db.butce = data.butce || db.butce || {};
+  if(data.nextId && data.nextId > nextId) nextId = data.nextId;
+
+  if(Array.isArray(data.kuyular) && data.kuyular.length > 0){
+    db.kuyular = data.kuyular;
+  } else {
+    db.kuyular = [...PRELOADED_KUYULAR];
+  }
+  if(!Array.isArray(data.kuyular) && data.kuyular_user && data.kuyular_user.length > 0){
+    const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>k.id)) : 0;
+    db.kuyular = [...db.kuyular, ...data.kuyular_user.filter(k=>k.id>maxPre)];
+  }
+  if(data.kuyular_updates){
+    data.kuyular_updates.forEach(u => {
+      const k = db.kuyular.find(x=>x.id===u.id);
+      if(k) k.bit = u.bit;
+    });
+  }
+  normalizeDbMakineAdlari();
+  ensureNextId();
+  return true;
+}
+
 function initFiltreBtnLabels(){
   // Günlük başlasın, bugünün tarihi gösterilsin
   const parts = seciliGun ? seciliGun.split('-') : null;
@@ -246,26 +328,16 @@ function initFiltreBtnLabels(){
 }
 
 function save(){
-  const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>k.id)) : 0;
-  const kuyular_user = db.kuyular.filter(k => k.id > maxPre);
-  const kuyular_updates = db.kuyular
-    .filter(k => k.id <= maxPre && k.bit)
-    .map(k => ({id: k.id, bit: k.bit}));
+  const payload = firebasePayload();
+  saveLocalBackup(payload);
 
   setStatus(false, '● Kaydediliyor...');
-  set(dbRef, {
-    gunluk:          db.gunluk,
-    duraklamalar:    db.duraklamalar,
-    kuyular_user,
-    kuyular_updates,
-    nextId,
-    at: new Date().toISOString()
-  }).then(() => {
+  set(dbRef, payload).then(() => {
     setStatus(true, 'Kaydedildi · ' + new Date().toLocaleTimeString('tr-TR'));
     renderAll();
   }).catch(e => {
     console.error('Kayıt hatası:', e);
-    setStatus(false, '● Kayıt hatası: ' + e.message);
+    setStatus(false, '● Firebase kayıt hatası · yerel yedek alındı');
   });
 }
 
@@ -292,33 +364,17 @@ function load(){
   get(dbRef).then(snapshot => {
     const data = snapshot.val();
     if(data){
-      const fbGunluk = data.gunluk || [];
-      if(fbGunluk.length === 0){
-        db.gunluk = [...PRELOADED_GUNLUK];
-        save();
+      const chosen = newerData(data, readLocalBackup());
+      applySavedData(chosen);
+      saveLocalBackup(chosen);
+    } else {
+      const local = readLocalBackup();
+      if(local){
+        applySavedData(local);
+        setStatus(false, '● Yerel yedekten açıldı');
+        renderAll();
         return;
       }
-      const fbIds = new Set(fbGunluk.map(r => r.id));
-      const eksik = PRELOADED_GUNLUK.filter(r => !fbIds.has(r.id));
-      db.gunluk = [...eksik, ...fbGunluk];
-      normalizeDbMakineAdlari();
-      db.duraklamalar = data.duraklamalar || [];
-      normalizeDbMakineAdlari();
-      if(data.butce) db.butce = data.butce;
-      if(data.nextId && data.nextId > nextId) nextId = data.nextId;
-      if(data.kuyular_user && data.kuyular_user.length > 0){
-        const maxPre = Math.max(...PRELOADED_KUYULAR.map(k=>k.id));
-        db.kuyular = [...PRELOADED_KUYULAR, ...data.kuyular_user.filter(k=>k.id>maxPre)];
-        normalizeDbMakineAdlari();
-      }
-      if(data.kuyular_updates){
-        data.kuyular_updates.forEach(u => {
-          const k = db.kuyular.find(x=>x.id===u.id);
-          if(k) k.bit = u.bit;
-        });
-      }
-    } else {
-      // Firebase boş - preloaded veriyi yaz
       db.gunluk = [...PRELOADED_GUNLUK];
       save();
       return;
@@ -330,14 +386,31 @@ function load(){
     renderAll();
   }).catch(e => {
     console.error('Yükleme hatası:', e);
-    setStatus(false, '● Bağlantı hatası');
-    // Hata olsa bile preloaded ile çalış
-    db.gunluk = [...PRELOADED_GUNLUK];
+    const local = readLocalBackup();
+    if(local){
+      applySavedData(local);
+      setStatus(false, '● Firebase bağlantı hatası · yerel yedekten açıldı');
+    } else {
+      setStatus(false, '● Bağlantı hatası');
+      db.gunluk = [...PRELOADED_GUNLUK];
+    }
     renderAll();
   });
 }
 
-function uid(){ return nextId++; }
+function ensureNextId(){
+  const ids = []
+    .concat((db.kuyular || []).map(x => parseInt(x.id,10) || 0))
+    .concat((db.gunluk || []).map(x => parseInt(x.id,10) || 0))
+    .concat((db.duraklamalar || []).map(x => parseInt(x.id,10) || 0));
+  const maxId = Math.max(0, ...ids);
+  if(!Number.isFinite(nextId) || nextId <= maxId) nextId = maxId + 1;
+}
+
+function uid(){
+  ensureNextId();
+  return nextId++;
+}
 function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 const MAKINE_ALIAS = {
   'GS-200': 'GS-200',
@@ -1869,33 +1942,9 @@ function saveButce(){
   const b = {};
   ['q1','q2','q3','q4'].forEach(q=>{ b[q] = parseFloat(document.getElementById('butce-'+q)?.value)||0; });
   db.butce = b;
-  // Firebase'e kaydet (save() üzerinden)
-  setStatus(false, '● Kaydediliyor...');
-  set(dbRef, {
-    gunluk:          db.gunluk,
-    duraklamalar:    db.duraklamalar,
-    kuyular_user:    db.kuyular.filter(k => {
-      const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(x=>x.id)) : 0;
-      return k.id > maxPre;
-    }),
-    kuyular_updates: db.kuyular.filter(k => {
-      const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(x=>x.id)) : 0;
-      return k.id <= maxPre && k.bit;
-    }).map(k => ({id:k.id, bit:k.bit})),
-    nextId,
-    butce: b,
-    at: new Date().toISOString()
-  }).then(() => {
-    setStatus(true, 'Bütçe kaydedildi · ' + new Date().toLocaleTimeString('tr-TR'));
-    const msg = document.getElementById('butce-save-msg');
-    if(msg){ msg.textContent = '✓ Kaydedildi'; setTimeout(()=>msg.textContent='', 2500); }
-    renderOzetPage();
-  }).catch(e => {
-    console.error('Bütçe kayıt hatası:', e);
-    setStatus(false, '● Kayıt hatası');
-    const msg = document.getElementById('butce-save-msg');
-    if(msg){ msg.textContent = '✗ Kayıt hatası: ' + e.message; }
-  });
+  save();
+  const msg = document.getElementById('butce-save-msg');
+  if(msg){ msg.textContent = 'Kaydediliyor...'; setTimeout(()=>msg.textContent='', 2500); }
 }
 
 function getCeyrekMetraj(q, yil){
@@ -2476,10 +2525,12 @@ normalizeDbMakineAdlari();
 db.gunluk  = PRELOADED_GUNLUK;
 normalizeDbMakineAdlari();
 nextId = PRELOADED_NEXTID;
+ensureNextId();
 
 // Auth durumunu dinle
 db.kuyular = PRELOADED_KUYULAR;
 normalizeDbMakineAdlari();
+ensureNextId();
 // sel-ay artık header'dan kaldırıldı; aktifAy ve seciliAy değişkenlerle yönetiliyor
 window.aktifMakine = 'GS-200';
 
