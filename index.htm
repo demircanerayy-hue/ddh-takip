@@ -930,7 +930,7 @@ canvas.ddh-rig-canvas { display: block; image-rendering: pixelated; }
     <div class="sc"><div class="sc-lbl">Dönem</div><div class="sc-val" id="d-ay" style="font-size:14px">—</div></div>
     <div class="sc"><div class="sc-lbl">Toplam Delgi</div><div class="sc-val gold" id="d-toplam">0 <span>m</span></div></div>
     <div class="sc"><div class="sc-lbl">Aktif Kuyu</div><div class="sc-val green" id="d-aktif">0</div></div>
-    <div class="sc"><div class="sc-lbl">Bu Ay Tamamlanan</div><div class="sc-val blue" id="d-bitti">0</div></div>
+    <div class="sc"><div class="sc-lbl">Bu Ay Tamamlanan</div><div class="sc-val blue" id="d-bitti">0</div><div id="d-bitti-detay" style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.25"></div></div>
     <div class="sc"><div class="sc-lbl">Toplam Duraklama</div><div class="sc-val" id="d-durak">0 <span>dk</span></div></div>
   </div>
 
@@ -1662,12 +1662,15 @@ function load(){
       const fbIds = new Set(fbGunluk.map(r => r.id));
       const eksik = PRELOADED_GUNLUK.filter(r => !fbIds.has(r.id));
       db.gunluk = [...eksik, ...fbGunluk];
+      normalizeDbMakineAdlari();
       db.duraklamalar = data.duraklamalar || [];
+      normalizeDbMakineAdlari();
       if(data.butce) db.butce = data.butce;
       if(data.nextId && data.nextId > nextId) nextId = data.nextId;
       if(data.kuyular_user && data.kuyular_user.length > 0){
         const maxPre = Math.max(...PRELOADED_KUYULAR.map(k=>k.id));
         db.kuyular = [...PRELOADED_KUYULAR, ...data.kuyular_user.filter(k=>k.id>maxPre)];
+        normalizeDbMakineAdlari();
       }
       if(data.kuyular_updates){
         data.kuyular_updates.forEach(u => {
@@ -1696,7 +1699,58 @@ function load(){
 }
 
 function uid(){ return nextId++; }
-function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+const MAKINE_ALIAS = {
+  'GS-200': 'GS-200',
+  'GS 200': 'GS-200',
+  'DBC-U6': 'DBC-U6',
+  'DBC U-6': 'DBC-U6',
+  'DBC-U-6': 'DBC-U6',
+  'U-6 ( YENI )': 'DBC-U6',
+  'U-6 ( YENİ )': 'DBC-U6',
+  'BATUHAN-600X': 'BATUHAN-600X',
+  'BTHN-600X': 'BATUHAN-600X',
+  'BATUHAN 600X': 'BATUHAN-600X',
+  'GS-600': 'GS-600',
+  'GS 600': 'GS-600',
+  'BDU-600': 'BDU-600',
+  'BDU 600': 'BDU-600'
+};
+
+function makineKey(makine){
+  const raw = String(makine || '').trim();
+  const up = raw.toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ');
+  return MAKINE_ALIAS[up] || MAKINE_ALIAS[raw] || raw;
+}
+
+function normalizeDbMakineAdlari(){
+  ['kuyular','gunluk','duraklamalar'].forEach(tbl => {
+    (db[tbl] || []).forEach(r => { if(r && r.makine) r.makine = makineKey(r.makine); });
+  });
+}
+
+function tamamlananKuyular(ay){
+  const sayimAy = ay || seciliAy || aktifAy;
+  const goruldu = new Set();
+  return (db.kuyular || [])
+    .filter(k => k && k.bit && String(k.bit).trim() !== '' && String(k.bit).startsWith(sayimAy))
+    .filter(k => {
+      const key = String(k.no || '') + '|' + String(k.bit || '') + '|' + String(k.id || '');
+      if(goruldu.has(key)) return false;
+      goruldu.add(key);
+      return true;
+    })
+    .sort((a,b) => String(a.bit || '').localeCompare(String(b.bit || '')) || String(a.no || '').localeCompare(String(b.no || '')));
+}
+
+function aktifKuyular(){
+  const byNo = new Map();
+  (db.kuyular || []).filter(isAktifKuyu).forEach(k => {
+    const key = String(k.no || k.id || '');
+    if(!byNo.has(key)) byNo.set(key, k);
+  });
+  return Array.from(byNo.values());
+}
 function fmtDate(d){
   if(!d) return '—';
   // UTC parse hatası olmaması için doğrudan string parse
@@ -1739,7 +1793,7 @@ function aktifMetraj(kuyuNo){
 
 function makineAyMetraj(makine, ay){
   let toplam = 0;
-  db.gunluk.filter(r => r.makine===makine && r.tarih && r.tarih.startsWith(ay)).forEach(r => {
+  db.gunluk.filter(r => makineEslesir(r.makine, makine) && r.tarih && r.tarih.startsWith(ay)).forEach(r => {
     toplam += (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0);
     // Eski model
     if(r.kuyular) r.kuyular.forEach(k => { toplam += parseFloat(k.ilerleme)||0; });
@@ -1771,7 +1825,7 @@ function bugunAyMi(){
 }
 
 function makineEslesir(a, b){
-  return (a || '') === (b || '');
+  return makineKey(a) === makineKey(b);
 }
 
 function kuyuNolariFromSondaj(sondaj){
@@ -1878,16 +1932,22 @@ function renderDash(){
 
   // Aktif kuyu sayısı — SADECE mevcut aydaysa gerçek aktif kuyular
   const aktifSay = bugunAyMi()
-    ? db.kuyular.filter(k => isAktifKuyu(k)).length
+    ? aktifKuyular().length
     : 0;
   // Tamamlanan = SEÇİLİ AY içinde bitiş tarihi olan kuyular
   const sayimAy = seciliAy || aktifAy;
-  const bittiSay = db.kuyular.filter(k => k.bit && k.bit.trim() !== '' && k.bit.startsWith(sayimAy)).length;
+  const bittiListe = tamamlananKuyular(sayimAy);
+  const bittiSay = bittiListe.length;
   const topDurak = ayDurak.reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
 
   document.getElementById('d-toplam').innerHTML = toplamDelgi.toFixed(2)+' <span>m</span>';
   document.getElementById('d-aktif').textContent = aktifSay;
   document.getElementById('d-bitti').textContent = bittiSay;
+  const bittiDetay = document.getElementById('d-bitti-detay');
+  if(bittiDetay){
+    bittiDetay.textContent = bittiListe.length ? bittiListe.map(k => (k.no || '?') + ' (' + fmtDate(k.bit) + ')').join(', ') : 'Bu ay bitiş tarihi yok';
+    bittiDetay.title = bittiListe.length ? bittiListe.map(k => (k.no || '?') + ' - ' + (k.makine || '-') + ' - ' + (k.bit || '')).join(' | ') : '';
+  }
   document.getElementById('d-durak').innerHTML = topDurak+' <span>dk</span>';
   document.getElementById('d-ay').textContent = label;
 
@@ -1900,15 +1960,15 @@ function renderDash(){
       mToplam = makineAyMetraj(m, aktifAy);
     } else {
       mToplam = db.gunluk
-        .filter(r => r.makine===m && r.tarih && r.tarih >= bas && r.tarih <= bit)
+        .filter(r => makineEslesir(r.makine, m) && r.tarih && r.tarih >= bas && r.tarih <= bit)
         .reduce((s,r)=>s+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0),0);
     }
-    const mDurak = ayDurak.filter(d=>d.makine===m).reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
+    const mDurak = ayDurak.filter(d=>makineEslesir(d.makine,m)).reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
 
     // Mevcut ay → aktif kuyu rozeti | Geçmiş ay → delinen kuyular listesi (rozet yok)
     let durumHtml;
     if(bugunAyMi()){
-      const aktifK = db.kuyular.find(k => k.makine === m && isAktifKuyu(k));
+      const aktifK = db.kuyular.find(k => makineEslesir(k.makine, m) && isAktifKuyu(k));
       if(aktifK){
         durumHtml = `<span class="aktif-badge on">&#x25CF; Aktif &middot; ${esc(aktifK.no)}</span>`;
       } else {
@@ -2203,7 +2263,7 @@ function renderKuyular(){
   const qd = document.getElementById('q-kd').value;
   const list = db.kuyular.filter(k =>
     (!q  || k.no.toLowerCase().includes(q) || (k.mevkii||'').toLowerCase().includes(q)) &&
-    (!qm || k.makine===qm) &&
+    (!qm || makineEslesir(k.makine,qm)) &&
     (!qb || k.saha===qb) &&
     (!qd || (qd==='aktif' ? isAktifKuyu(k) : !isAktifKuyu(k)))
   );
@@ -2211,7 +2271,7 @@ function renderKuyular(){
     list.sort((a,b)=>{
       let va,vb;
       if(kuyuSortCol==='no')     { va=a.no||''; vb=b.no||''; }
-      else if(kuyuSortCol==='makine') { va=a.makine||''; vb=b.makine||''; }
+      else if(kuyuSortCol==='makine') { va=makineKey(a.makine)||''; vb=makineKey(b.makine)||''; }
       else if(kuyuSortCol==='bas')  { va=a.bas||''; vb=b.bas||''; }
       else if(kuyuSortCol==='bit')  { va=a.bit||''; vb=b.bit||''; }
       else if(kuyuSortCol==='az')   { va=parseFloat(a.az)||0; vb=parseFloat(b.az)||0; return (va-vb)*kuyuSortDir; }
@@ -2394,7 +2454,7 @@ function renderMak(m){
   const aktifKEl = document.getElementById('aktif-kuyu-'+key);
   const aktifMEl = document.getElementById('aktif-met-'+key);
   if(bugunAyMi()){
-    const aktifK = db.kuyular.find(k => k.makine === m && isAktifKuyu(k));
+    const aktifK = db.kuyular.find(k => makineEslesir(k.makine, m) && isAktifKuyu(k));
     if(aktifKEl) aktifKEl.textContent = aktifK ? aktifK.no : '—';
     if(aktifMEl){
       if(aktifK){ const met = aktifMetraj(aktifK.no); aktifMEl.textContent = met.toFixed(2)+' m'; }
@@ -3644,11 +3704,14 @@ const PRELOADED_NEXTID  = 1750;
 
 // Her açılışta import verisini yükle (localStorage'ı geç)
 db.kuyular = PRELOADED_KUYULAR;
+normalizeDbMakineAdlari();
 db.gunluk  = PRELOADED_GUNLUK;
+normalizeDbMakineAdlari();
 nextId = PRELOADED_NEXTID;
 
 // Auth durumunu dinle
 db.kuyular = PRELOADED_KUYULAR;
+normalizeDbMakineAdlari();
 // sel-ay artık header'dan kaldırıldı; aktifAy ve seciliAy değişkenlerle yönetiliyor
 window.aktifMakine = 'GS-200';
 
