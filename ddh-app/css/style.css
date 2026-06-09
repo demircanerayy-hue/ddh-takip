@@ -194,7 +194,7 @@ body{
 }
 
 .sc-lbl{
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
   color:var(--text3);
   margin-bottom:8px;
@@ -209,13 +209,13 @@ body{
   letter-spacing:-0.03em;
 }
 
-.sc-val span{font-size:13px;color:var(--text3);margin-left:3px;font-weight:600;}
+.sc-val span{font-size:15px;color:var(--text3);margin-left:3px;font-weight:600;}
 .sc-val.gold{color:var(--gold);}
 .sc-val.green{color:var(--green);}
 .sc-val.blue{color:var(--blue);}
 .mini-list{
   margin-top:8px;
-  font-size:10px;
+  font-size:12px;
   color:var(--text3);
   line-height:1.35;
   max-height:42px;
@@ -232,7 +232,7 @@ body{
   border:1px solid var(--border);
   color:var(--text2);
   font-family:IBM Plex Mono,monospace;
-  font-size:10px;
+  font-size:12px;
   font-weight:700;
 }
 
@@ -927,12 +927,7 @@ th:hover .sort-ico{opacity:1;}
   font-family: 'IBM Plex Mono', monospace;
 }
 .ddh-rig-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 10px;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  display: none;
 }
 .ddh-rig-badge.aktif { background: var(--green-dim); color: var(--green); }
 .ddh-rig-badge.durak { background: var(--warn-dim);  color: var(--warn);  }
@@ -961,12 +956,12 @@ canvas.ddh-rig-canvas {
 
 /* Kuyu tag */
 .ddh-kuyu-tag {
-  font-size: 9px;
+  font-size: 14px;
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 700;
   color: var(--accent);
   letter-spacing: 0;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
