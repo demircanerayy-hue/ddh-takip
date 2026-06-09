@@ -1,4 +1,5 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_NEXTID } from './data.js';
+import { RigAnim } from './ddhRigAnim.js?v=project-theme-4';
 // ── SABITLER ────────────────────────────────────────────────
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
@@ -229,9 +230,62 @@ const dbRef = ref(fbDb, 'data');
 
 function setStatus(ok, msg){
   const el = document.getElementById('save-ind');
-  if(!el) return;
-  el.style.color = ok ? '#27ae60' : '#e05252';
-  el.textContent = msg;
+  const text = String(msg || '');
+  const lower = text.toLocaleLowerCase('tr-TR');
+  let state = ok ? 'ok' : 'warn';
+  if(lower.includes('hata')) state = 'error';
+  if(lower.includes('kaydediliyor') || lower.includes('bağlan') || lower.includes('baglan')) state = 'busy';
+  if(lower.includes('yerel')) state = ok ? 'ok' : 'warn';
+  if(el){
+    el.className = 'save-ind state-' + state;
+    el.textContent = text.replace(/^●\s*/, '');
+  }
+  updateDataHealth(state, text);
+}
+
+function updateDataHealth(state, msg){
+  const firebaseEl = document.getElementById('dh-firebase');
+  const localEl = document.getElementById('dh-local');
+  const lastEl = document.getElementById('dh-last');
+  const modeEl = document.getElementById('dh-mode');
+  const noteEl = document.getElementById('dh-note');
+  if(!firebaseEl || !localEl || !lastEl || !modeEl || !noteEl) return;
+  const text = String(msg || '');
+  const lower = text.toLocaleLowerCase('tr-TR');
+  localEl.textContent = 'Güncel';
+  if(state === 'ok'){
+    firebaseEl.textContent = lower.includes('yerel') ? 'Bekliyor' : 'Bağlı';
+    modeEl.textContent = lower.includes('yerel') ? 'Yerel' : 'Canlı';
+    noteEl.textContent = lower.includes('yerel') ? 'Veriler bu tarayıcıdaki yerel yedekten açıldı.' : 'Veriler Firebase ile eşitlendi.';
+    lastEl.textContent = new Date().toLocaleTimeString('tr-TR');
+  } else if(state === 'busy'){
+    firebaseEl.textContent = 'İşleniyor';
+    modeEl.textContent = 'Senkron';
+    noteEl.textContent = text.replace(/^●\s*/, '');
+  } else if(state === 'error'){
+    firebaseEl.textContent = 'Hata';
+    modeEl.textContent = 'Yerel';
+    noteEl.textContent = 'Firebase yazmadı; veri yerel yedekte tutuluyor.';
+    lastEl.textContent = new Date().toLocaleTimeString('tr-TR');
+  } else {
+    firebaseEl.textContent = lower.includes('yerel') ? 'Bağlanamadı' : 'Bekliyor';
+    modeEl.textContent = 'Yerel';
+    noteEl.textContent = text.replace(/^●\s*/, '') || 'Kayıt durumu bekleniyor.';
+  }
+}
+
+function showToast(title, detail){
+  let el = document.getElementById('app-toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'app-toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `${esc(title)}${detail ? `<small>${esc(detail)}</small>` : ''}`;
+  el.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=>el.classList.remove('show'), 2600);
 }
 
 const LOCAL_BACKUP_KEY = 'ddh-takip-data-v1';
@@ -359,16 +413,36 @@ function cikisYap(){
   signOut(fbAuth);
 }
 
+function getWithTimeout(dbRef, ms = 8000){
+  return Promise.race([
+    get(dbRef),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), ms))
+  ]);
+}
+
 function load(){
   setStatus(false, '● Bağlanıyor...');
-  get(dbRef).then(snapshot => {
+  const local = readLocalBackup();
+  if(local){
+    applySavedData(local);
+    setStatus(false, '● Yerel yedek yüklendi · Firebase bekleniyor');
+  } else {
+    db.kuyular = [...PRELOADED_KUYULAR];
+    db.gunluk = [...PRELOADED_GUNLUK];
+    db.duraklamalar = db.duraklamalar || [];
+    normalizeDbMakineAdlari();
+    ensureNextId();
+    setStatus(false, '● Yerel veri yüklendi · Firebase bekleniyor');
+  }
+  renderAll();
+
+  getWithTimeout(dbRef).then(snapshot => {
     const data = snapshot.val();
     if(data){
-      const chosen = newerData(data, readLocalBackup());
+      const chosen = newerData(data, local);
       applySavedData(chosen);
       saveLocalBackup(chosen);
     } else {
-      const local = readLocalBackup();
       if(local){
         applySavedData(local);
         setStatus(false, '● Yerel yedekten açıldı');
@@ -654,10 +728,20 @@ function renderDash(){
 
   document.getElementById('d-toplam').innerHTML = toplamDelgi.toFixed(2)+' <span>m</span>';
   document.getElementById('d-aktif').textContent = aktifSay;
+  const aktifDetay = document.getElementById('d-aktif-detay');
+  if(aktifDetay){
+    const aktifListe = bugunAyMi() ? aktifKuyular() : [];
+    aktifDetay.innerHTML = aktifListe.length
+      ? aktifListe.slice(0,4).map(k => `<span class="mini-pill">${esc(k.no || '?')}</span>`).join('') + (aktifListe.length > 4 ? `<span class="mini-pill">+${aktifListe.length-4}</span>` : '')
+      : 'Bu dönem için aktif kuyu gösterimi yok';
+    aktifDetay.title = aktifListe.map(k => `${k.no || '?'} - ${k.makine || '-'}`).join(' | ');
+  }
   document.getElementById('d-bitti').textContent = bittiSay;
   const bittiDetay = document.getElementById('d-bitti-detay');
   if(bittiDetay){
-    bittiDetay.textContent = bittiListe.length ? bittiListe.map(k => (k.no || '?') + ' (' + fmtDate(k.bit) + ')').join(', ') : 'Bu ay bitiş tarihi yok';
+    bittiDetay.innerHTML = bittiListe.length
+      ? bittiListe.slice(0,3).map(k => `<span class="mini-pill">${esc(k.no || '?')} · ${fmtDate(k.bit)}</span>`).join('') + (bittiListe.length > 3 ? `<span class="mini-pill">+${bittiListe.length-3}</span>` : '')
+      : 'Bu ay bitiş tarihi yok';
     bittiDetay.title = bittiListe.length ? bittiListe.map(k => (k.no || '?') + ' - ' + (k.makine || '-') + ' - ' + (k.bit || '')).join(' | ') : '';
   }
   document.getElementById('d-durak').innerHTML = topDurak+' <span>dk</span>';
@@ -1397,9 +1481,11 @@ function saveKuyu(){
   if(editKId !== null){
     const idx = db.kuyular.findIndex(x=>x.id===editKId);
     if(idx!==-1) db.kuyular[idx] = {...db.kuyular[idx],...data};
+    showToast('Kuyu güncellendi', no);
   } else {
     data.id = uid();
     db.kuyular.push(data);
+    showToast('Yeni kuyu eklendi', no);
   }
   save(); closeKuyu(); renderKuyular(); renderDash();
 }
@@ -1466,10 +1552,30 @@ function updateKuyuDegisimTotals(){
   const oldTop = sum(['v-old-s1','v-old-s2','v-old-s3']);
   const newTop = sum(['v-new-s1','v-new-s2','v-new-s3']);
   const summary = document.getElementById('v-change-summary');
-  if(!summary) return;
+  const preview = document.getElementById('v-change-preview');
   const fark = Math.abs((oldTop + newTop) - vardiyaTop);
-  summary.textContent = `Vardiya toplamı ${vardiyaTop.toFixed(2)} m · dağıtılan ${(oldTop+newTop).toFixed(2)} m`;
-  summary.className = 'kcp-foot ' + (fark < 0.001 ? 'ok' : 'warn');
+  if(summary){
+    summary.textContent = fark < 0.001
+      ? `Hazır: ${vardiyaTop.toFixed(2)} m iki kuyuya dağıtıldı.`
+      : `Kontrol gerekli: vardiya ${vardiyaTop.toFixed(2)} m, dağıtılan ${(oldTop+newTop).toFixed(2)} m`;
+    summary.className = 'kcp-foot ' + (fark < 0.001 ? 'ok' : 'warn');
+  }
+  if(preview){
+    const parts = kuyuDegisimParcalari() || ['Biten kuyu','Başlayan kuyu'];
+    const oldShift = [1,2,3].filter(n => vardiyaNum('v-old-s'+n) > 0).map(n => `V${n}`).join(', ') || '-';
+    const newShift = [1,2,3].filter(n => vardiyaNum('v-new-s'+n) > 0).map(n => `V${n}`).join(', ') || '-';
+    preview.innerHTML = `
+      <div class="kcp-card">
+        <div class="kcp-card-title">Oluşacak kayıt 1</div>
+        <div class="kcp-card-val">${esc(parts[0])} · ${oldTop.toFixed(2)} m</div>
+        <small>${esc(oldShift)}</small>
+      </div>
+      <div class="kcp-card">
+        <div class="kcp-card-title">Oluşacak kayıt 2</div>
+        <div class="kcp-card-val">${esc(parts[1])} · ${newTop.toFixed(2)} m</div>
+        <small>${esc(newShift)}</small>
+      </div>`;
+  }
 }
 
 function updateKuyuDegisimPanel(resetDagitim){
@@ -1623,6 +1729,7 @@ function saveVar(){
       db.gunluk = db.gunluk.filter(r=>r.id!==editVarId);
       degisimSatirlari.forEach(row => upsertGunlukRow(row));
       editVarId = null;
+      showToast('Kuyu değişimi güncellendi', `${degisimSatirlari[0].sondaj} -> ${degisimSatirlari[1].sondaj}`);
       save(); closeVar(); renderMak(varMakine); renderDash();
       return;
     }
@@ -1636,12 +1743,14 @@ function saveVar(){
       };
     }
     editVarId = null;
+    showToast('Vardiya güncellendi', `${varMakine} · ${sondaj}`);
     save(); closeVar(); renderMak(varMakine); renderDash();
     return;
   }
 
   if(degisimSatirlari){
     degisimSatirlari.forEach(row => upsertGunlukRow(row));
+    showToast('Kuyu değişimi kaydedildi', `${degisimSatirlari[0].sondaj} -> ${degisimSatirlari[1].sondaj}`);
     save(); closeVar(); renderMak(varMakine); renderDash();
     setTimeout(function(){ var r=document.querySelector("#kg-tbody tr"); if(r && typeof ddhAnimateNewRow==="function") ddhAnimateNewRow(r); }, 60);
     return;
@@ -1655,6 +1764,7 @@ function saveVar(){
     toplam: (s1??0)+(s2??0)+(s3??0),
     depth: null, not: not_
   });
+  showToast('Vardiya kaydedildi', `${varMakine} · ${sondaj}`);
 
   save(); closeVar(); renderMak(varMakine); renderDash();
   // YENİ KAYIT ANİMASYONU
@@ -2588,7 +2698,7 @@ function ddh_roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function ddh_drawRig(ctx, rigColor, durum, t) {
+function ddh_drawRigLegacy(ctx, rigColor, durum, t) {
   const W = DDH_W, H = DDH_H;
   const PI = Math.PI;
   const dpr = DDH_DPR;
@@ -3006,6 +3116,342 @@ function ddh_drawRig(ctx, rigColor, durum, t) {
 }
 
 // renderSondajAnim içinde canvas setup
+function ddh_hexToRgb(hex) {
+  const clean = String(hex || '#64748b').replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map(ch => ch + ch).join('') : clean;
+  return {
+    r: parseInt(full.slice(0, 2), 16) || 100,
+    g: parseInt(full.slice(2, 4), 16) || 116,
+    b: parseInt(full.slice(4, 6), 16) || 139,
+  };
+}
+
+// Rig visual engine v4. This later declaration overrides the older drawer above.
+function ddh_drawRig(ctx, rigColor, durum, t) {
+  const W = DDH_W, H = DDH_H;
+  const PI = Math.PI;
+  const dpr = DDH_DPR;
+  const isAktif = durum === 'aktif';
+  const isDurak = durum === 'durak';
+  const rgb = ddh_hexToRgb(rigColor);
+  const pulse = isAktif ? (Math.sin(t * 5.4) + 1) / 2 : 0;
+  const shake = isAktif ? Math.sin(t * 32) * .65 : 0;
+  const feed = isAktif ? Math.sin(t * 4.6) * 1.8 : 0;
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const sky = ctx.createLinearGradient(0, 0, 0, 98);
+  sky.addColorStop(0, 'rgba(255,255,255,.95)');
+  sky.addColorStop(1, 'rgba(235,239,246,.92)');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, 98);
+
+  ctx.fillStyle = 'rgba(65,74,90,.07)';
+  ctx.beginPath();
+  ctx.ellipse(55, 91, 44, 10, 0, 0, PI * 2);
+  ctx.fill();
+
+  const ground = ctx.createLinearGradient(0, 94, 0, H);
+  ground.addColorStop(0, 'rgba(127,111,88,.33)');
+  ground.addColorStop(.55, 'rgba(103,88,69,.22)');
+  ground.addColorStop(1, 'rgba(83,70,55,.14)');
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 94, W, H - 94);
+
+  ctx.strokeStyle = 'rgba(109,95,75,.42)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, 94.5);
+  ctx.bezierCurveTo(24, 92.5, 42, 96.5, 62, 94.5);
+  ctx.bezierCurveTo(80, 92.5, 94, 93.5, W, 95);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(92,79,61,.14)';
+  ctx.lineWidth = .7;
+  for (let i = 0; i < 5; i++) {
+    const y = 100 + i * 5;
+    ctx.beginPath();
+    ctx.moveTo(8, y);
+    ctx.lineTo(W - 8, y + Math.sin(i) * 1.4);
+    ctx.stroke();
+  }
+
+  const boreGlow = isAktif ? .24 + pulse * .22 : .08;
+  ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${boreGlow})`;
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(55 + shake * .25, 91);
+  ctx.lineTo(55 + shake * .2, H - 2);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(50,43,36,.62)';
+  ctx.lineWidth = 3.5;
+  ctx.setLineDash([4, 4]);
+  ctx.lineDashOffset = isAktif ? -((t * 18) % 8) : 0;
+  ctx.beginPath();
+  ctx.moveTo(55 + shake * .25, 94);
+  ctx.lineTo(55 + shake * .2, H - 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(44,50,64,.18)';
+  ctx.beginPath();
+  ctx.ellipse(55, 94, 10, 3.2, 0, 0, PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(78,68,55,.52)';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.ellipse(55, 94, 8.2, 2.5, 0, 0, PI * 2);
+  ctx.stroke();
+
+  if (isAktif) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    for (let i = 0; i < 9; i++) {
+      const phase = (t * (1.2 + i * .13) + i * .71) % 1;
+      const side = i % 2 ? 1 : -1;
+      const x = 55 + side * (5 + phase * (10 + i % 3 * 3));
+      const y = 94 - Math.sin(phase * PI) * (5 + i % 4);
+      const a = (1 - phase) * .34;
+      ctx.fillStyle = `rgba(126,105,76,${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.1 + (i % 3) * .35, 0, PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = `rgba(153,132,98,${.16 + pulse * .14})`;
+    ctx.beginPath();
+    ctx.ellipse(55, 95, 13 + pulse * 4, 4.2 + pulse * 1.2, 0, 0, PI * 2);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(shake * .35, 0);
+
+  const track = ctx.createLinearGradient(9, 80, 9, 94);
+  track.addColorStop(0, 'rgba(73,80,96,.96)');
+  track.addColorStop(1, 'rgba(34,40,53,.98)');
+  ctx.fillStyle = track;
+  ddh_roundRect(ctx, 9, 80, 92, 15, 6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  ctx.lineWidth = .8;
+  ctx.stroke();
+
+  for (let i = 0; i < 9; i++) {
+    const x = 13 + i * 9.2;
+    ctx.fillStyle = i % 2 ? 'rgba(18,23,34,.72)' : 'rgba(28,34,47,.82)';
+    ddh_roundRect(ctx, x, 83, 7.8, 7.2, 2);
+    ctx.fill();
+  }
+  [18, 91].forEach(x => {
+    ctx.fillStyle = 'rgba(96,106,128,.86)';
+    ctx.beginPath();
+    ctx.arc(x, 87.5, 5.5, 0, PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(221,226,238,.22)';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(29,35,48,.7)';
+    ctx.beginPath();
+    ctx.arc(x, 87.5, 2.1, 0, PI * 2);
+    ctx.fill();
+  });
+
+  const body = ctx.createLinearGradient(20, 48, 88, 82);
+  body.addColorStop(0, 'rgba(96,105,127,.98)');
+  body.addColorStop(.58, 'rgba(57,66,87,.98)');
+  body.addColorStop(1, 'rgba(43,51,68,.98)');
+  ctx.fillStyle = body;
+  ddh_roundRect(ctx, 20, 47, 70, 34, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.15)';
+  ctx.stroke();
+
+  ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},.82)`;
+  ddh_roundRect(ctx, 50, 52, 22, 10, 3);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.fillRect(52, 53, 18, 2);
+
+  const glass = ctx.createLinearGradient(25, 51, 47, 66);
+  glass.addColorStop(0, 'rgba(74,111,166,.86)');
+  glass.addColorStop(1, 'rgba(15,25,48,.94)');
+  ctx.fillStyle = glass;
+  ddh_roundRect(ctx, 25, 51, 22, 15, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(214,232,255,.24)';
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.beginPath();
+  ctx.moveTo(27, 53);
+  ctx.lineTo(39, 53);
+  ctx.lineTo(27, 62);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(177,188,211,.34)';
+  ctx.lineWidth = .8;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(75, 54 + i * 3.6);
+    ctx.lineTo(87, 54 + i * 3.6);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(47,53,68,.9)';
+  ddh_roundRect(ctx, 84, 40, 5, 12, 2);
+  ctx.fill();
+  if (isAktif) {
+    ctx.fillStyle = `rgba(90,96,110,${.08 + pulse * .12})`;
+    ctx.beginPath();
+    ctx.ellipse(90, 36 - pulse * 2, 5 + pulse * 3, 2.5 + pulse, -.2, 0, PI * 2);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(55 + shake * .15, 0);
+  ctx.strokeStyle = 'rgba(40,48,66,.34)';
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-8, 7); ctx.lineTo(-18, 50); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 7); ctx.lineTo(18, 50); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(111,122,151,.96)';
+  ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(-8, 7); ctx.lineTo(-18, 50); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 7); ctx.lineTo(18, 50); ctx.stroke();
+
+  ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},.62)`;
+  ctx.lineWidth = 1.1;
+  [-14, -5, 5, 14].forEach(y => {
+    const yy = y + 28;
+    const span = 5 + (yy - 7) * .28;
+    ctx.beginPath();
+    ctx.moveTo(-span, yy);
+    ctx.lineTo(span, yy);
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = 'rgba(115,126,153,.34)';
+  ctx.lineWidth = .8;
+  ctx.beginPath(); ctx.moveTo(-6, 18); ctx.lineTo(10, 33); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(6, 18); ctx.lineTo(-10, 33); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-11, 33); ctx.lineTo(15, 45); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(11, 33); ctx.lineTo(-15, 45); ctx.stroke();
+
+  ctx.fillStyle = rigColor;
+  ctx.beginPath();
+  ctx.moveTo(0, 2);
+  ctx.lineTo(-5.5, 10);
+  ctx.lineTo(5.5, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = isAktif ? `rgba(251,191,36,${.45 + pulse * .45})` : 'rgba(150,155,165,.35)';
+  ctx.beginPath();
+  ctx.arc(0, 2.2, isAktif ? 3 + pulse * 1.2 : 2.5, 0, PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(71,82,104,.46)';
+  ctx.lineWidth = .9;
+  ctx.setLineDash([4, 2.5]);
+  ctx.beginPath();
+  ctx.moveTo(0, 10);
+  ctx.lineTo(0, 49 + feed);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(55 + shake * .18, 50 + feed);
+  ctx.rotate(isAktif ? t * 5.8 : (isDurak ? Math.sin(t * 1.1) * .07 : 0));
+  ctx.shadowColor = 'rgba(0,0,0,.24)';
+  ctx.shadowBlur = 5;
+  ctx.strokeStyle = rigColor;
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.arc(0, 0, 10.5, 0, PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(31,38,54,.95)';
+  ctx.beginPath();
+  ctx.arc(0, 0, 7.8, 0, PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = rigColor;
+  ctx.lineWidth = 2.1;
+  ctx.beginPath(); ctx.moveTo(-6.5, 0); ctx.lineTo(6.5, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -6.5); ctx.lineTo(0, 6.5); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.82)';
+  ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, PI * 2); ctx.fill();
+  ctx.restore();
+
+  const rodX = 55 + shake * .2;
+  const rodY = 58 + feed;
+  const rodGrad = ctx.createLinearGradient(rodX - 5, 0, rodX + 5, 0);
+  rodGrad.addColorStop(0, 'rgba(32,38,52,.98)');
+  rodGrad.addColorStop(.48, 'rgba(118,128,154,.95)');
+  rodGrad.addColorStop(1, 'rgba(32,38,52,.98)');
+  ctx.fillStyle = rodGrad;
+  ddh_roundRect(ctx, rodX - 3, rodY, 6, 36, 3);
+  ctx.fill();
+
+  [69, 81].forEach(y => {
+    ctx.fillStyle = 'rgba(92,102,126,.95)';
+    ddh_roundRect(ctx, rodX - 6, y + feed, 12, 4.8, 2.4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(235,240,250,.16)';
+    ctx.lineWidth = .6;
+    ctx.stroke();
+  });
+
+  ctx.save();
+  ctx.translate(rodX, 94 + feed);
+  ctx.rotate(isAktif ? t * 8.2 : 0);
+  ctx.shadowColor = 'rgba(0,0,0,.3)';
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = isAktif ? '#dc2626' : 'rgba(91,98,118,.88)';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.bezierCurveTo(-5, -4, -7, 2, -4.8, 9);
+  ctx.lineTo(4.8, 9);
+  ctx.bezierCurveTo(7, 2, 5, -4, 0, -8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(20,24,32,.45)';
+  ctx.lineWidth = .8;
+  ctx.beginPath(); ctx.moveTo(-5, -1); ctx.lineTo(-2.7, 8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 8.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(5, -1); ctx.lineTo(2.7, 8); ctx.stroke();
+  ctx.fillStyle = isAktif ? '#991b1b' : 'rgba(58,65,84,.86)';
+  ddh_roundRect(ctx, -5.2, -10.5, 10.4, 4.2, 2);
+  ctx.fill();
+  ctx.restore();
+
+  if (isDurak || !isAktif) {
+    const x = 86, y = 20;
+    ctx.fillStyle = isDurak ? 'rgba(178,80,0,.13)' : 'rgba(100,108,128,.10)';
+    ctx.beginPath(); ctx.arc(x, y, 11, 0, PI * 2); ctx.fill();
+    ctx.strokeStyle = isDurak ? '#b25000' : 'rgba(100,108,128,.42)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.arc(x, y, 11, 0, PI * 2); ctx.stroke();
+    ctx.fillStyle = isDurak ? '#b25000' : 'rgba(100,108,128,.58)';
+    if (isDurak) {
+      ddh_roundRect(ctx, x - 4.2, y - 5.8, 3.2, 11.6, 1.3); ctx.fill();
+      ddh_roundRect(ctx, x + 1.2, y - 5.8, 3.2, 11.6, 1.3); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, 3.4, 0, PI * 2); ctx.fill();
+    }
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
 function ddh_initCanvas(canvas) {
   ddh_setupCanvas(canvas);
   return canvas.getContext('2d');
@@ -3028,9 +3474,11 @@ function renderSondajAnim() {
 
   // Her çağrıda yeniden render — filtre değişimlerinde güncel veri gösterilsin
   {
+    ddhDestroyRigControllers();
     grid.innerHTML = '';
     MAKINELER.forEach(makine => {
-      const renk = MAKINE_RENKLER_V2[makine] || '#64748b';
+      const temaRenk = MAKINE_RENKLER_V2[makine] || '#64748b';
+      const rigRenk = '#e2c870';
 
       // Filtre duyarlı kuyu: bugünün ayıysa gerçek aktif, geçmiş/gelecek aydaysa
       // o dönemde delinen son kuyu — ayMakineAktifKuyu() zaten bunu yapıyor
@@ -3090,10 +3538,10 @@ function renderSondajAnim() {
       card.className = 'ddh-rig-card rig-' + durum;
       card.dataset.rig = makine;
       card.innerHTML =
-        '<div class="ddh-rig-strip" style="background:' + renk + '"></div>' +
+        '<div class="ddh-rig-strip" style="background:' + temaRenk + '"></div>' +
         '<div class="ddh-rig-body">' +
           '<div class="ddh-rig-header">' +
-            '<div class="ddh-rig-name" style="color:' + renk + '">' + makine + '</div>' +
+            '<div class="ddh-rig-name" style="color:' + temaRenk + '">' + makine + '</div>' +
             '<div class="ddh-rig-badge ' + (donemKuyu && !bugunAyMi() ? 'tamam' : durum) + '">' + badgeTxt + '</div>' +
           '</div>' +
           '<div class="ddh-kuyu-tag">' + (kuyuNo ? '⬡ ' + kuyuNo : '— atanmış kuyu yok —') + '</div>' +
@@ -3105,7 +3553,7 @@ function renderSondajAnim() {
             '<span class="ddh-depth-val" id="ddhdv-' + makine.replace(/[^a-zA-Z0-9]/g,'') + '">' + derinlik.toFixed(1) + ' <span>m</span></span>' +
           '</div>' +
           '<div class="ddh-progress-wrap">' +
-            '<div class="ddh-progress-bar" id="ddhpb-' + makine.replace(/[^a-zA-Z0-9]/g,'') + '" style="width:' + pct + '%;background:' + renk + '"></div>' +
+            '<div class="ddh-progress-bar" id="ddhpb-' + makine.replace(/[^a-zA-Z0-9]/g,'') + '" style="width:' + pct + '%;background:' + temaRenk + '"></div>' +
           '</div>' +
           '<div class="ddh-rig-meta">' +
             '<span>' + donemLbl + ': <strong>' + donemMetraj.toFixed(1) + ' m</strong></span>' +
@@ -3113,6 +3561,19 @@ function renderSondajAnim() {
           '</div>' +
         '</div>';
       grid.appendChild(card);
+      const canvas = document.getElementById(cid);
+      if (canvas) {
+        const rigStatus = durum === 'durak' ? 'durak' : durum === 'aktif' ? 'aktif' : 'pasif';
+        const ctrl = RigAnim.mount(canvas, {
+          status: rigStatus,
+          machineName: makine,
+          color: rigRenk,
+          showDepth: false,
+          initialDepth: derinlik
+        });
+        canvas._ddhRigController = ctrl;
+        _ddhRigControllers.set(cid, ctrl);
+      }
     });
   }
 }
@@ -3120,6 +3581,12 @@ function renderSondajAnim() {
 // ── ANIMATION LOOP ─────────────────────────────────────────────
 let _ddhAnimStart = null;
 let _ddhDepthCache = {};
+let _ddhRigControllers = new Map();
+
+function ddhDestroyRigControllers() {
+  _ddhRigControllers.forEach(ctrl => ctrl.destroy());
+  _ddhRigControllers.clear();
+}
 
 function _ddhLoop(ts) {
   if (!_ddhAnimStart) _ddhAnimStart = ts;
@@ -3133,6 +3600,7 @@ function _ddhLoop(ts) {
       const cid = 'ddhc-' + makine.replace(/[^a-zA-Z0-9]/g,'');
       const canvas = document.getElementById(cid);
       if (!canvas) return;
+      if (canvas._ddhRigController) return;
       const ctx = ddh_initCanvas(canvas);
       const donemKuyu = ayMakineAktifKuyu(makine);
       const durum = ddhMakineDurum(makine, donemKuyu);
