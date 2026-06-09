@@ -347,11 +347,20 @@
 <!-- ÖZET -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="page" id="page-ozet">
-  <div class="ozet-head">
+  <div class="ozet-command">
     <div>
       <div class="ozet-kicker">YILLIK OPERASYON ÖZETİ</div>
       <div class="ozet-title">Sondaj Performans Raporu</div>
       <div class="ozet-sub" id="ozet-donem-label">Dönem verileri hazırlanıyor</div>
+    </div>
+    <div class="ozet-filter-controls">
+      <select class="fi" id="ozet-ay-sec" onchange="setOzetFilter('ay')"></select>
+      <button class="ozet-filter-btn active" data-ozet-filter="ay" onclick="setOzetFilter('ay')">Seçili Ay</button>
+      <button class="ozet-filter-btn" data-ozet-filter="Q1" onclick="setOzetFilter('Q1')">1. Çeyrek</button>
+      <button class="ozet-filter-btn" data-ozet-filter="Q2" onclick="setOzetFilter('Q2')">2. Çeyrek</button>
+      <button class="ozet-filter-btn" data-ozet-filter="Q3" onclick="setOzetFilter('Q3')">3. Çeyrek</button>
+      <button class="ozet-filter-btn" data-ozet-filter="Q4" onclick="setOzetFilter('Q4')">4. Çeyrek</button>
+      <button class="ozet-filter-btn" data-ozet-filter="yil" onclick="setOzetFilter('yil')">Yıl Toplamı</button>
     </div>
     <div class="ozet-budget-mini">
       <div class="ozet-budget-title">Yıllık Bütçe (m)</div>
@@ -368,32 +377,23 @@
     </div>
   </div>
 
-  <div class="ozet-filter-panel">
-    <div>
-      <div class="ozet-filter-title">Özet Filtresi</div>
-      <div class="ozet-filter-sub">Bu filtre sadece Özet sekmesindeki KPI, makine ve duraklama verilerini değiştirir.</div>
-    </div>
-    <div class="ozet-filter-controls">
-      <select class="fi" id="ozet-ay-sec" onchange="setOzetFilter('ay')"></select>
-      <button class="ozet-filter-btn active" data-ozet-filter="ay" onclick="setOzetFilter('ay')">Seçili Ay</button>
-      <button class="ozet-filter-btn" data-ozet-filter="Q1" onclick="setOzetFilter('Q1')">1. Çeyrek</button>
-      <button class="ozet-filter-btn" data-ozet-filter="Q2" onclick="setOzetFilter('Q2')">2. Çeyrek</button>
-      <button class="ozet-filter-btn" data-ozet-filter="Q3" onclick="setOzetFilter('Q3')">3. Çeyrek</button>
-      <button class="ozet-filter-btn" data-ozet-filter="Q4" onclick="setOzetFilter('Q4')">4. Çeyrek</button>
-      <button class="ozet-filter-btn" data-ozet-filter="yil" onclick="setOzetFilter('yil')">Yıl Toplamı</button>
-    </div>
-  </div>
-
   <div class="ozet-kpi-grid" id="ozet-kpi-band"></div>
 
-  <div class="ozet-layout">
+  <div class="ozet-main-grid">
     <div>
       <div class="ozet-panel">
         <div class="ozet-panel-head">
-          <div><span>MAKİNE KARŞILAŞTIRMA</span><strong>Aylık performans</strong></div>
+          <div><span>MAKİNE PERFORMANS MATRİSİ</span><strong>Dönem karşılaştırması</strong></div>
           <small>Metraj, duraklama, verimlilik ve hedef etkisi</small>
         </div>
         <div id="ozet-makine-wrap"></div>
+      </div>
+      <div class="ozet-panel">
+        <div class="ozet-panel-head">
+          <div><span>MAKİNE METRAJ DAĞILIMI</span><strong>Makine bazlı toplam delgi</strong></div>
+          <small>En yüksek metrajdan düşük metraja sıralanır</small>
+        </div>
+        <div id="ozet-metraj-chart-wrap"></div>
       </div>
     </div>
     <div>

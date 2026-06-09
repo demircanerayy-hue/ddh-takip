@@ -1071,14 +1071,16 @@ canvas.ddh-rig-canvas {
 }
 
 /* ── ÖZET RAPOR ───────────────────────────────────────── */
-.ozet-head{
+.ozet-head,
+.ozet-command{
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(320px,390px);
+  grid-template-columns:minmax(220px,.8fr) minmax(360px,1.2fr) minmax(300px,.75fr);
   gap:10px;
-  align-items:stretch;
+  align-items:center;
   margin-bottom:12px;
 }
 .ozet-head,
+.ozet-command,
 .ozet-filter-panel,
 .ozet-panel,
 .ozet-kpi{
@@ -1086,6 +1088,7 @@ canvas.ddh-rig-canvas {
   -webkit-font-smoothing:antialiased;
 }
 .ozet-head > div:first-child,
+.ozet-command,
 .ozet-budget-mini,
 .ozet-panel,
 .ozet-kpi,
@@ -1095,6 +1098,7 @@ canvas.ddh-rig-canvas {
   border-radius:var(--r2);
   box-shadow:var(--shadow-sm);
 }
+.ozet-command{padding:12px 14px;}
 .ozet-head > div:first-child{padding:20px 22px;}
 .ozet-kicker{
   font-size:10px;
@@ -1104,14 +1108,19 @@ canvas.ddh-rig-canvas {
   margin-bottom:5px;
 }
 .ozet-title{
-  font-size:18px;
+  font-size:17px;
   font-weight:900;
   color:var(--text);
   letter-spacing:0;
   line-height:1.15;
 }
 .ozet-sub{margin-top:8px;color:var(--text3);font-size:12px;font-weight:600;}
-.ozet-budget-mini{padding:12px;}
+.ozet-budget-mini{
+  padding:0;
+  background:transparent;
+  border:0;
+  box-shadow:none;
+}
 .ozet-budget-title{
   font-size:11px;
   font-weight:900;
@@ -1169,13 +1178,13 @@ canvas.ddh-rig-canvas {
 }
 .ozet-filter-controls{
   display:flex;
-  justify-content:flex-end;
+  justify-content:center;
   align-items:center;
   gap:7px;
   flex-wrap:wrap;
 }
 .ozet-filter-controls .fi{
-  width:150px;
+  width:138px;
   height:34px;
   padding:6px 9px;
   font-weight:800;
@@ -1200,7 +1209,7 @@ canvas.ddh-rig-canvas {
 }
 .ozet-kpi-grid{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:12px;
   margin-bottom:16px;
 }
@@ -1210,11 +1219,11 @@ canvas.ddh-rig-canvas {
   color:var(--text3);
   font-weight:900;
   letter-spacing:1px;
-  text-transform:uppercase;
+  text-transform:none;
   margin-bottom:8px;
 }
 .ozet-kpi .k-val{
-  font-size:25px;
+  font-size:24px;
   line-height:1;
   color:var(--text);
   font-weight:900;
@@ -1223,7 +1232,8 @@ canvas.ddh-rig-canvas {
 }
 .ozet-kpi .k-val span{font-size:12px;color:var(--text3);font-weight:800;margin-left:2px;}
 .ozet-kpi .k-note{margin-top:8px;font-size:11px;color:var(--text3);font-weight:700;line-height:1.35;}
-.ozet-layout{
+.ozet-layout,
+.ozet-main-grid{
   display:grid;
   grid-template-columns:minmax(0,1.35fr) minmax(330px,.65fr);
   gap:16px;
@@ -1266,7 +1276,7 @@ canvas.ddh-rig-canvas {
 .ozet-machine-list{display:grid;gap:9px;}
 .ozet-machine-row{
   display:grid;
-  grid-template-columns:132px minmax(170px,1fr) minmax(76px,.35fr) minmax(76px,.35fr) minmax(82px,.4fr);
+  grid-template-columns:132px minmax(150px,1fr) minmax(72px,.34fr) minmax(72px,.34fr) minmax(78px,.36fr) 86px;
   gap:12px;
   align-items:center;
   padding:12px;
@@ -1275,6 +1285,20 @@ canvas.ddh-rig-canvas {
   background:linear-gradient(180deg,var(--bg2),var(--bg3));
   border-left:4px solid var(--m-color,var(--border2));
 }
+.ozet-status{
+  justify-self:end;
+  border:1px solid var(--border2);
+  border-radius:999px;
+  padding:4px 8px;
+  font-size:10px;
+  font-weight:900;
+  color:var(--text2);
+  background:var(--bg2);
+  white-space:nowrap;
+}
+.ozet-status.good{color:var(--green);background:var(--green-dim);border-color:rgba(26,140,69,.22);}
+.ozet-status.warn{color:var(--warn);background:var(--warn-dim);border-color:rgba(178,80,0,.22);}
+.ozet-status.idle{color:var(--text3);}
 .ozet-machine-name{font-weight:900;color:var(--text);font-size:13px;}
 .ozet-machine-state{font-size:10px;color:var(--text3);font-weight:800;margin-top:2px;}
 .ozet-meter{height:8px;border-radius:999px;background:var(--bg4);overflow:hidden;}
@@ -1344,13 +1368,6 @@ canvas.ddh-rig-canvas {
   font-weight:900;
 }
 .ozet-chart-legend span{display:inline-flex;align-items:center;gap:6px;}
-.ozet-target-line{
-  width:16px;
-  height:9px;
-  border:1.5px dashed var(--text3);
-  border-radius:2px;
-  display:inline-block;
-}
 .ozet-real-box{
   width:14px;
   height:9px;
@@ -1361,7 +1378,7 @@ canvas.ddh-rig-canvas {
 .ozet-budget-chart{display:grid;gap:10px;min-width:0;}
 .ozet-budget-row{
   display:grid;
-  grid-template-columns:minmax(92px,.6fr) minmax(180px,1.6fr) minmax(118px,.7fr) minmax(76px,.4fr);
+  grid-template-columns:minmax(92px,.55fr) minmax(210px,1.55fr) minmax(104px,.55fr) minmax(92px,.5fr) minmax(118px,.65fr);
   gap:12px;
   align-items:center;
   padding:11px 12px;
@@ -1374,29 +1391,34 @@ canvas.ddh-rig-canvas {
 .ozet-budget-q span{display:block;color:var(--text3);font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .ozet-budget-bar{
   position:relative;
-  height:28px;
-  border-radius:8px;
+  height:30px;
+  border-radius:999px;
   background:var(--bg4);
+  border:1px solid var(--border);
   overflow:hidden;
-}
-.ozet-budget-bar .target{
-  position:absolute;
-  left:0;
-  top:5px;
-  width:var(--target);
-  height:18px;
-  border:1.5px dashed var(--row-color);
-  border-radius:7px;
-  background:rgba(255,255,255,.32);
 }
 .ozet-budget-bar .actual{
   position:absolute;
   left:0;
-  top:9px;
+  top:0;
   width:var(--actual);
-  height:10px;
+  height:100%;
   border-radius:999px;
-  background:var(--row-color);
+  background:linear-gradient(90deg,var(--row-color),color-mix(in srgb,var(--row-color) 72%,#fff));
+}
+.ozet-budget-bar span{
+  position:relative;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  height:100%;
+  color:var(--text);
+  font-family:IBM Plex Mono,monospace;
+  font-size:12px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
 }
 .ozet-budget-num strong,
 .ozet-budget-dev{
@@ -1407,7 +1429,7 @@ canvas.ddh-rig-canvas {
 .ozet-budget-num span{display:block;font-size:10px;color:var(--text3);font-weight:800;white-space:nowrap;}
 .ozet-budget-dev{
   text-align:right;
-  font-size:13px;
+  font-size:12px;
   font-weight:900;
   color:var(--text3);
 }
@@ -1464,17 +1486,57 @@ canvas.ddh-rig-canvas {
   color:var(--text3);
 }
 .ozet-year-col.active .ozet-year-label{color:var(--row-color);}
+.ozet-machine-chart{display:grid;gap:10px;}
+.ozet-machine-chart-row{
+  display:grid;
+  grid-template-columns:132px minmax(0,1fr) 78px;
+  gap:12px;
+  align-items:center;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  background:var(--bg3);
+}
+.ozet-machine-chart-name{
+  font-size:12px;
+  font-weight:900;
+  color:var(--text);
+}
+.ozet-machine-chart-track{
+  height:14px;
+  border-radius:999px;
+  background:var(--bg4);
+  overflow:hidden;
+}
+.ozet-machine-chart-track i{
+  display:block;
+  width:var(--w);
+  height:100%;
+  border-radius:999px;
+  background:var(--row-color);
+}
+.ozet-machine-chart-val{
+  text-align:right;
+  font-family:IBM Plex Mono,monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:12px;
+  font-weight:900;
+  color:var(--text);
+}
 @media (max-width: 1100px){
-  .ozet-head,.ozet-layout,.ozet-filter-panel{grid-template-columns:1fr;}
+  .ozet-head,.ozet-command,.ozet-layout,.ozet-main-grid,.ozet-filter-panel{grid-template-columns:1fr;}
   .ozet-kpi-grid{grid-template-columns:repeat(2,1fr);}
   .ozet-filter-controls{justify-content:flex-start;}
-  .ozet-budget-row{grid-template-columns:minmax(86px,.5fr) minmax(170px,1.4fr) minmax(112px,.7fr);}
-  .ozet-budget-dev{text-align:left;grid-column:3;}
+  .ozet-budget-row{grid-template-columns:minmax(86px,.5fr) minmax(170px,1.4fr) minmax(98px,.7fr) minmax(90px,.6fr);}
+  .ozet-budget-dev{text-align:left;grid-column:2 / -1;}
   .ozet-year-chart{grid-template-columns:repeat(6,1fr);}
 }
 @media (max-width: 760px){
   .ozet-kpi-grid,#ceyrek-kartlar,.ozet-budget-grid{grid-template-columns:1fr;}
   .ozet-machine-row{grid-template-columns:1fr 1fr;}
+  .ozet-status{justify-self:start;}
+  .ozet-machine-chart-row{grid-template-columns:1fr;}
+  .ozet-machine-chart-val{text-align:left;}
   .ozet-panel-head{display:block;}
   .ozet-panel-head small{display:block;text-align:left;margin-top:6px;}
   .ozet-filter-controls .fi{width:100%;}

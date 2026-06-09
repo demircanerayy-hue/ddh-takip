@@ -2035,7 +2035,7 @@ const CEYREK_AYLAR = {
   'Q3': ['07','08','09'],
   'Q4': ['10','11','12'],
 };
-const CEYREK_LABEL = {'Q1':'1. Çeyrek (Oca-Mar)','Q2':'2. Çeyrek (Nis-Haz)','Q3':'3. Çeyrek','Q4':'4. Çeyrek (Eki-Ara)'};
+const CEYREK_LABEL = {'Q1':'1. Çeyrek (Ocak-Mart)','Q2':'2. Çeyrek (Nisan-Haziran)','Q3':'3. Çeyrek (Temmuz-Eylül)','Q4':'4. Çeyrek (Ekim-Aralık)'};
 const CEYREK_RENK  = {'Q1':'#3b82f6','Q2':'#10b981','Q3':'#f97316','Q4':'#8b5cf6'};
 
 function loadButce(){
@@ -2170,10 +2170,9 @@ function renderOzetKpis(rows, period, yil, butce){
   const tamamKuyu = (db.kuyular || []).filter(k => ozetInPeriod(k.bit, period)).length;
   const items = [
     ['Toplam Delgi', ozetFmt(ayMetraj,1), 'm', `${period.label} seçili dönem`, 'var(--gold)'],
-    ['Toplam Duraklama', ozetFmt(ayDurak,0), 'dk', `${ozetFmt(ayDurak/60,1)} saat operasyon kaybı`, 'var(--warn)'],
-    ['Ortalama Verim', ozetFmt(verim,1), 'm/gün', `${calismaGunu || 0} çalışma günü`, 'var(--green)'],
-    ['Tamamlanan Kuyu', ozetFmt(tamamKuyu,0), '', 'Bu dönemde kapanan kuyu', 'var(--blue)'],
-    ['Bütçe Gerçekleşme', donemPct !== null ? `%${donemPct}` : (toplamButce ? `%${butcePct}` : '—'), '', donemPct !== null ? `${ozetFmt(ayMetraj,0)} / ${ozetFmt(donemButce,0)} m` : (toplamButce ? `Yıl: ${ozetFmt(yilMetraj,0)} / ${ozetFmt(toplamButce,0)} m` : 'Bütçe girilmedi'), 'var(--purple)']
+    ['Bütçe Gerçekleşme', donemPct !== null ? `%${donemPct}` : (toplamButce ? `%${butcePct}` : '—'), '', donemPct !== null ? `${ozetFmt(ayMetraj,0)} / ${ozetFmt(donemButce,0)} m` : (toplamButce ? `Yıl: ${ozetFmt(yilMetraj,0)} / ${ozetFmt(toplamButce,0)} m` : 'Bütçe girilmedi'), 'var(--purple)'],
+    ['Duraklama Etkisi', ozetFmt(ayDurak,0), 'dk', `${ozetFmt(ayDurak/60,1)} saat operasyon kaybı`, 'var(--warn)'],
+    ['Ortalama Verim', ozetFmt(verim,1), 'm/gün', `${calismaGunu || 0} çalışma günü · ${tamamKuyu} kuyu tamamlandı`, 'var(--green)']
   ];
   wrap.innerHTML = items.map(i => `<div class="ozet-kpi" style="--kpi-color:${i[4]}">
     <div class="k-lbl">${i[0]}</div>
@@ -2193,6 +2192,7 @@ function renderOzetMakine(rows){
   }
   wrap.innerHTML = `<div class="ozet-machine-list">${sorted.map(r => {
     const pct = Math.round((r.metraj/maxMetraj)*100);
+    const status = r.durak > 180 ? ['warn','Duraklama'] : r.verim >= 35 ? ['good','İyi'] : r.metraj > 0 ? ['idle','Takip'] : ['idle','Veri yok'];
     return `<div class="ozet-machine-row" style="--m-color:${r.color}">
       <div>
         <div class="ozet-machine-name">${esc(r.m)}</div>
@@ -2205,6 +2205,26 @@ function renderOzetMakine(rows){
       <div class="ozet-metric"><strong>${ozetFmt(r.metraj,1)}</strong><span>metraj</span></div>
       <div class="ozet-metric"><strong>${ozetFmt(r.durak,0)}</strong><span>durak dk</span></div>
       <div class="ozet-metric"><strong>${ozetFmt(r.verim,1)}</strong><span>m/gün</span></div>
+      <div class="ozet-status ${status[0]}">${status[1]}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderOzetMetrajChart(rows){
+  const wrap = document.getElementById('ozet-metraj-chart-wrap');
+  if(!wrap) return;
+  const sorted = rows.slice().sort((a,b)=>b.metraj-a.metraj);
+  const max = Math.max(...sorted.map(r=>r.metraj), 1);
+  if(!sorted.some(r=>r.metraj)){
+    wrap.innerHTML = '<div class="ozet-empty">Seçili dönem için metraj grafiği oluşturacak veri yok.</div>';
+    return;
+  }
+  wrap.innerHTML = `<div class="ozet-machine-chart">${sorted.map(r => {
+    const w = Math.max(r.metraj ? 4 : 0, Math.round(r.metraj / max * 100));
+    return `<div class="ozet-machine-chart-row" style="--row-color:${r.color};--w:${w}%">
+      <div class="ozet-machine-chart-name">${esc(r.m)}</div>
+      <div class="ozet-machine-chart-track"><i></i></div>
+      <div class="ozet-machine-chart-val">${ozetFmt(r.metraj,1)} m</div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -2262,6 +2282,7 @@ function renderOzetPage(){
 
   renderOzetKpis(rows, period, yil, butce);
   renderOzetMakine(rows);
+  renderOzetMetrajChart(rows);
   renderOzetInsights(rows, period);
   renderOzetDurak(period);
 
@@ -2323,31 +2344,33 @@ function drawButceGerceklesen(yil, butce){
     const sapma = hedef ? gercek - hedef : 0;
     return {q, gercek, hedef, pct, sapma, color:CEYREK_RENK[q]};
   });
-  const maxVal = Math.max(...data.map(d => Math.max(d.gercek, d.hedef)), 1);
   wrap.innerHTML = `<div class="ozet-chart-legend">
-    <span><i class="ozet-target-line"></i>Hedef</span>
-    <span><i class="ozet-real-box"></i>Gerçekleşen</span>
+    <span><i class="ozet-real-box"></i>Hedefe göre gerçekleşme oranı</span>
   </div>
   <div class="ozet-budget-chart">${data.map(d => {
-    const hedefPct = d.hedef ? Math.min(100, Math.round(d.hedef / maxVal * 100)) : 0;
-    const gercekPct = d.gercek ? Math.min(100, Math.round(d.gercek / maxVal * 100)) : 0;
+    const gercekPct = d.hedef ? Math.min(100, Math.round(d.gercek / d.hedef * 100)) : 0;
     const sapmaCls = !d.hedef ? 'neutral' : d.sapma >= 0 ? 'good' : 'warn';
-    return `<div class="ozet-budget-row" style="--row-color:${d.color};--target:${hedefPct}%;--actual:${gercekPct}%">
+    const sapmaText = !d.hedef ? 'Bütçe yok' : d.sapma >= 0 ? `+${ozetFmt(d.sapma,0)} m aşım` : `${ozetFmt(Math.abs(d.sapma),0)} m kaldı`;
+    return `<div class="ozet-budget-row" style="--row-color:${d.color};--actual:${gercekPct}%">
       <div class="ozet-budget-q">
         <strong>${d.q}</strong>
         <span>${CEYREK_LABEL[d.q].replace(d.q,'').replace(/[()]/g,'').trim()}</span>
       </div>
       <div class="ozet-budget-bar">
-        ${d.hedef ? '<i class="target"></i>' : ''}
         <b class="actual"></b>
+        <span>${d.hedef ? `%${d.pct}` : 'Bütçe Yok'}</span>
       </div>
       <div class="ozet-budget-num">
         <strong>${ozetFmt(d.gercek,1)} m</strong>
-        <span>${d.hedef ? `Hedef ${ozetFmt(d.hedef,0)} m` : 'Bütçe yok'}</span>
+        <span>Gerçekleşen</span>
+      </div>
+      <div class="ozet-budget-num">
+        <strong>${d.hedef ? ozetFmt(d.hedef,0) : '—'} m</strong>
+        <span>Hedef</span>
       </div>
       <div class="ozet-budget-dev ${sapmaCls}">
-        ${d.hedef ? `${d.sapma>=0?'+':'-'}${ozetFmt(Math.abs(d.sapma),0)} m` : '—'}
-        <span>${d.hedef ? `%${d.pct}` : ''}</span>
+        ${sapmaText}
+        <span>${d.hedef ? 'Sapma' : ''}</span>
       </div>
     </div>`;
   }).join('')}</div>`;
