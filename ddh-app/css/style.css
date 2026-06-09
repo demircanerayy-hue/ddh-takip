@@ -927,6 +927,8 @@ th:hover .sort-ico{opacity:1;}
   font-family: 'IBM Plex Mono', monospace;
 }
 .ddh-rig-badge {
+  display: inline-flex !important;
+  align-items: center;
   font-size: 9px;
   font-weight: 700;
   padding: 3px 8px;
