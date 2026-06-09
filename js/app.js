@@ -2140,6 +2140,176 @@ function ozetGunlukMetraj(r){
   return toplam;
 }
 
+const OPEX_WAIT_USD_PER_HOUR = 38;
+const OPEX_TARIFFS = {
+  steep: {
+    label: 'Karotlu',
+    note: 'Eğim -45 altı',
+    rates: [{from:0,to:200,rate:60},{from:200,to:400,rate:64},{from:400,to:600,rate:73}]
+  },
+  neg45: {
+    label: '0/-45 derece',
+    note: 'Eğim 0 ile -45',
+    rates: [{from:0,to:200,rate:68},{from:200,to:400,rate:70},{from:400,to:600,rate:75}]
+  },
+  pos45: {
+    label: '0/+45 derece',
+    note: 'Pozitif eğim',
+    rates: [{from:0,to:200,rate:71},{from:200,to:400,rate:74},{from:400,to:600,rate:74}]
+  }
+};
+
+function opexFmtUsd(n){
+  return '$' + (Math.round(n || 0)).toLocaleString('tr-TR');
+}
+
+function opexFindKuyu(no){
+  const clean = String(no || '').trim();
+  if(!clean || clean === '-') return null;
+  return (db.kuyular || []).find(k => String(k.no || '').trim() === clean)
+    || (db.kuyular || []).find(k => String(k.no || '').replace(/[^0-9]/g,'') === clean.replace(/[^0-9]/g,''));
+}
+
+function opexTariffKey(egim){
+  const eg = parseFloat(egim);
+  if(Number.isNaN(eg)) return 'steep';
+  if(eg > 0) return 'pos45';
+  if(eg >= -45) return 'neg45';
+  return 'steep';
+}
+
+function opexRateAtDepth(tariff, depth){
+  const bands = tariff.rates;
+  return (bands.find(b => depth >= b.from && depth < b.to) || bands[bands.length - 1]).rate;
+}
+
+function opexDrillingCost(metre, startDepth, tariff){
+  let left = Math.max(0, parseFloat(metre) || 0);
+  let depth = Math.max(0, parseFloat(startDepth) || 0);
+  let cost = 0;
+  while(left > 0.0001){
+    const band = tariff.rates.find(b => depth >= b.from && depth < b.to) || tariff.rates[tariff.rates.length - 1];
+    const next = band.to && depth < band.to ? band.to : depth + left;
+    const part = Math.min(left, next - depth);
+    const rate = opexRateAtDepth(tariff, depth);
+    cost += part * rate;
+    depth += part;
+    left -= part;
+  }
+  return cost;
+}
+
+function opexGunlukKuyuEntries(r){
+  const entries = [];
+  if(Array.isArray(r.kuyular) && r.kuyular.length){
+    r.kuyular.forEach(k => {
+      const metre = parseFloat(k.ilerleme) || 0;
+      if(metre > 0) entries.push({no:k.no, metre});
+    });
+    return entries;
+  }
+  const metre = (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0);
+  if(metre <= 0) return entries;
+  const nos = kuyuNolariFromSondaj(r.sondaj).filter(Boolean);
+  if(!nos.length) return entries;
+  const share = metre / nos.length;
+  nos.forEach(no => entries.push({no, metre:share}));
+  return entries;
+}
+
+function ozetOpexSummary(period){
+  const allRows = (db.gunluk || [])
+    .slice()
+    .sort((a,b) => String(a.tarih || '').localeCompare(String(b.tarih || '')) || ((a.id||0) - (b.id||0)));
+  const depthByKuyu = {};
+  const byTariff = {};
+  const byMachine = {};
+  let drilling = 0;
+  let metres = 0;
+  let missing = 0;
+
+  Object.keys(OPEX_TARIFFS).forEach(k => {
+    byTariff[k] = {key:k, label:OPEX_TARIFFS[k].label, note:OPEX_TARIFFS[k].note, metres:0, cost:0};
+  });
+
+  allRows.forEach(r => {
+    opexGunlukKuyuEntries(r).forEach(e => {
+      const kuyu = opexFindKuyu(e.no);
+      if(!kuyu) missing += ozetInPeriod(r.tarih, period) ? e.metre : 0;
+      const key = opexTariffKey(kuyu && kuyu.eg);
+      const tariff = OPEX_TARIFFS[key];
+      const start = depthByKuyu[e.no] || parseFloat(kuyu && (kuyu.bm || kuyu.guncelBaslangic)) || 0;
+      const cost = opexDrillingCost(e.metre, start, tariff);
+      depthByKuyu[e.no] = start + e.metre;
+      if(!ozetInPeriod(r.tarih, period)) return;
+      drilling += cost;
+      metres += e.metre;
+      byTariff[key].metres += e.metre;
+      byTariff[key].cost += cost;
+      const machine = r.makine || 'Makine yok';
+      byMachine[machine] = byMachine[machine] || {machine, metres:0, cost:0};
+      byMachine[machine].metres += e.metre;
+      byMachine[machine].cost += cost;
+    });
+  });
+
+  const waitMinutes = (db.duraklamalar || [])
+    .filter(d => ozetInPeriod(d.tarih, period))
+    .reduce((s,d) => s + (parseFloat(d.dk)||0), 0);
+  const waiting = waitMinutes / 60 * OPEX_WAIT_USD_PER_HOUR;
+  return {
+    metres,
+    drilling,
+    waitMinutes,
+    waiting,
+    total: drilling + waiting,
+    avg: metres ? drilling / metres : 0,
+    missing,
+    byTariff: Object.values(byTariff).filter(x => x.metres || x.cost),
+    byMachine: Object.values(byMachine).sort((a,b)=>b.cost-a.cost)
+  };
+}
+
+function renderOzetOpex(period){
+  const wrap = document.getElementById('ozet-opex-wrap');
+  if(!wrap) return;
+  const s = ozetOpexSummary(period);
+  if(!s.metres && !s.waitMinutes){
+    wrap.innerHTML = '<div class="ozet-empty">Seçili dönem için OPEX hesaplanacak metraj veya duraklama verisi yok.</div>';
+    return;
+  }
+  const maxTariff = Math.max(1, ...s.byTariff.map(x=>x.cost));
+  const maxMachine = Math.max(1, ...s.byMachine.map(x=>x.cost));
+  wrap.innerHTML = `
+    <div class="ozet-opex-cards">
+      <div><span>Toplam OPEX</span><strong>${opexFmtUsd(s.total)}</strong><small>Delgi + bekleme</small></div>
+      <div><span>Delgi Maliyeti</span><strong>${opexFmtUsd(s.drilling)}</strong><small>${ozetFmt(s.metres,1)} m</small></div>
+      <div><span>Bekleme</span><strong>${opexFmtUsd(s.waiting)}</strong><small>${ozetFmt(s.waitMinutes,0)} dk x $${OPEX_WAIT_USD_PER_HOUR}/sa</small></div>
+      <div><span>Ortalama Birim</span><strong>$${ozetFmt(s.avg,1)}</strong><small>metre başı delgi</small></div>
+    </div>
+    <div class="ozet-opex-grid">
+      <div>
+        <div class="ozet-opex-title">Eğim ve derinlik tarifesi</div>
+        <div class="ozet-opex-bars">${s.byTariff.map(x => `
+          <div class="ozet-opex-row" style="--w:${Math.round(x.cost/maxTariff*100)}%">
+            <div><strong>${esc(x.label)}</strong><span>${esc(x.note)} · ${ozetFmt(x.metres,1)} m</span></div>
+            <i></i>
+            <b>${opexFmtUsd(x.cost)}</b>
+          </div>`).join('')}</div>
+      </div>
+      <div>
+        <div class="ozet-opex-title">Makine maliyet sıralaması</div>
+        <div class="ozet-opex-bars">${s.byMachine.slice(0,5).map(x => `
+          <div class="ozet-opex-row machine" style="--w:${Math.round(x.cost/maxMachine*100)}%">
+            <div><strong>${esc(x.machine)}</strong><span>${ozetFmt(x.metres,1)} m</span></div>
+            <i></i>
+            <b>${opexFmtUsd(x.cost)}</b>
+          </div>`).join('')}</div>
+      </div>
+    </div>
+    ${s.missing ? `<div class="ozet-opex-note">Not: ${ozetFmt(s.missing,1)} m için kuyu teknik bilgisi bulunamadı; varsayılan karotlu tarife kullanıldı.</div>` : ''}`;
+}
+
 function ozetMakineRows(period){
   const ayRecs = (db.gunluk || []).filter(r => ozetInPeriod(r.tarih, period));
   const ayDurak = (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period));
@@ -2285,6 +2455,7 @@ function renderOzetPage(){
   renderOzetMetrajChart(rows);
   renderOzetInsights(rows, period);
   renderOzetDurak(period);
+  renderOzetOpex(period);
 
   const kartWrap=document.getElementById('ceyrek-kartlar');
   if(kartWrap){

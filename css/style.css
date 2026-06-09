@@ -1342,6 +1342,101 @@ canvas.ddh-rig-canvas {
   font-size:12px;
   font-weight:700;
 }
+.ozet-opex-cards{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:14px;
+}
+.ozet-opex-cards div{
+  padding:13px;
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  background:var(--bg3);
+}
+.ozet-opex-cards span,
+.ozet-opex-title{
+  display:block;
+  color:var(--text3);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.8px;
+}
+.ozet-opex-cards strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+  font-family:IBM Plex Mono,monospace;
+  font-size:19px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+}
+.ozet-opex-cards small{
+  display:block;
+  margin-top:4px;
+  color:var(--text3);
+  font-size:10px;
+  font-weight:800;
+}
+.ozet-opex-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+.ozet-opex-title{margin-bottom:9px;color:var(--gold);}
+.ozet-opex-bars{display:grid;gap:9px;}
+.ozet-opex-row{
+  display:grid;
+  grid-template-columns:128px minmax(0,1fr) 92px;
+  gap:10px;
+  align-items:center;
+}
+.ozet-opex-row strong{
+  display:block;
+  color:var(--text);
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ozet-opex-row span{
+  display:block;
+  margin-top:2px;
+  color:var(--text3);
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ozet-opex-row i{
+  display:block;
+  width:var(--w);
+  min-width:3px;
+  height:12px;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--gold),#e7c861);
+}
+.ozet-opex-row.machine i{background:linear-gradient(90deg,var(--blue),#69a7ff);}
+.ozet-opex-row b{
+  text-align:right;
+  color:var(--text);
+  font-family:IBM Plex Mono,monospace;
+  font-size:12px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+}
+.ozet-opex-note{
+  margin-top:12px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  background:var(--bg3);
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+}
 #ceyrek-kartlar{
   display:grid;
   grid-template-columns:repeat(4,1fr);
@@ -1526,14 +1621,18 @@ canvas.ddh-rig-canvas {
 @media (max-width: 1100px){
   .ozet-head,.ozet-command,.ozet-layout,.ozet-main-grid,.ozet-filter-panel{grid-template-columns:1fr;}
   .ozet-kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .ozet-opex-cards{grid-template-columns:repeat(2,1fr);}
+  .ozet-opex-grid{grid-template-columns:1fr;}
   .ozet-filter-controls{justify-content:flex-start;}
   .ozet-budget-row{grid-template-columns:minmax(86px,.5fr) minmax(170px,1.4fr) minmax(98px,.7fr) minmax(90px,.6fr);}
   .ozet-budget-dev{text-align:left;grid-column:2 / -1;}
   .ozet-year-chart{grid-template-columns:repeat(6,1fr);}
 }
 @media (max-width: 760px){
-  .ozet-kpi-grid,#ceyrek-kartlar,.ozet-budget-grid{grid-template-columns:1fr;}
+  .ozet-kpi-grid,#ceyrek-kartlar,.ozet-budget-grid,.ozet-opex-cards{grid-template-columns:1fr;}
   .ozet-machine-row{grid-template-columns:1fr 1fr;}
+  .ozet-opex-row{grid-template-columns:1fr;}
+  .ozet-opex-row b{text-align:left;}
   .ozet-status{justify-self:start;}
   .ozet-machine-chart-row{grid-template-columns:1fr;}
   .ozet-machine-chart-val{text-align:left;}
