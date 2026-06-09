@@ -724,21 +724,23 @@ select.fi{cursor:pointer;background:var(--bg2);}
 .auth-box{
   position:relative;
   z-index:10;
-  background:var(--bg2);
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:28px 32px;
+  background:rgba(255,255,255,0.72);
+  border:1px solid rgba(255,255,255,0.38);
+  border-radius:16px;
+  padding:22px 26px;
   width:100%;
-  max-width:340px;
+  max-width:300px;
   text-align:center;
   box-shadow:var(--shadow-lg);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
 }
 
-.auth-logo{margin-bottom:32px;}
-.auth-logo img{width:44px!important;height:44px!important;}
+.auth-logo{margin-bottom:22px;}
+.auth-logo img{width:38px!important;height:38px!important;}
 
 .auth-title{
-  font-size:15px;
+  font-size:14px;
   font-weight:700;
   color:var(--text);
   margin-bottom:6px;
@@ -746,9 +748,9 @@ select.fi{cursor:pointer;background:var(--bg2);}
 }
 
 .auth-sub{
-  font-size:10.5px;
+  font-size:10px;
   color:var(--text3);
-  margin-bottom:36px;
+  margin-bottom:24px;
   font-weight:400;
 }
 
@@ -758,8 +760,8 @@ select.fi{cursor:pointer;background:var(--bg2);}
   border:1px solid var(--border2);
   color:var(--text);
   font-family:inherit;
-  font-size:15px;
-  padding:10px 14px;
+  font-size:13px;
+  padding:8px 12px;
   border-radius:10px;
   outline:none;
   margin-bottom:10px;
@@ -780,8 +782,8 @@ select.fi{cursor:pointer;background:var(--bg2);}
   border:none;
   font-family:inherit;
   font-weight:600;
-  font-size:15px;
-  padding:11px;
+  font-size:13px;
+  padding:9px;
   border-radius:10px;
   cursor:pointer;
   margin-top:8px;
