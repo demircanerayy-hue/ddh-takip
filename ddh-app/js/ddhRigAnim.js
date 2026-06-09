@@ -575,10 +575,6 @@ class RigController {
     ctx.fillStyle = "rgba(255,255,255,.82)";
     ctx.fillText(this.options.machineName, 14, 22);
 
-    const stateText = this.status.toUpperCase();
-    ctx.fillStyle = this.status === "aktif" ? "#e2c870" : this.status === "durak" ? "#f59e0b" : "#94a3b8";
-    ctx.fillText(stateText, 14, 38);
-
     if (this.options.showDepth) {
       ctx.font = "700 15px 'IBM Plex Mono', Consolas, monospace";
       ctx.fillStyle = "#e2c870";

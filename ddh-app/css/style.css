@@ -927,7 +927,12 @@ th:hover .sort-ico{opacity:1;}
   font-family: 'IBM Plex Mono', monospace;
 }
 .ddh-rig-badge {
-  display: none;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 .ddh-rig-badge.aktif { background: var(--green-dim); color: var(--green); }
 .ddh-rig-badge.durak { background: var(--warn-dim);  color: var(--warn);  }
