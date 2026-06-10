@@ -1422,10 +1422,17 @@ function autoSaha(){
 }
 
 // ── KUYU MODAL ──────────────────────────────────────────────
+function removeKuyuGuncelField(){
+  const el = document.getElementById('k-guncel');
+  const wrap = el ? el.closest('.ff') : null;
+  if(wrap) wrap.remove();
+}
+
 function openKuyu(){
   editKId = null;
   document.getElementById('m-kuyu-title').textContent = 'Yeni Kuyu Ekle';
-  ['k-no','k-az','k-eg','k-der','k-guncel','k-cap','k-y','k-x','k-z','k-mev','k-saha','k-su','k-bar'].forEach(id=>{
+  removeKuyuGuncelField();
+  ['k-no','k-az','k-eg','k-der','k-cap','k-y','k-x','k-z','k-mev','k-saha','k-su','k-bar'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('k-bas').value = aktifAy+'-01';
@@ -1435,6 +1442,7 @@ function openKuyu(){
 
 function editKuyu(id){
   const k = db.kuyular.find(x=>x.id===id); if(!k) return;
+  removeKuyuGuncelField();
   editKId = id;
   document.getElementById('m-kuyu-title').textContent = 'Kuyu Düzenle · '+k.no;
   document.getElementById('k-no').value   = k.no||'';
@@ -1444,7 +1452,6 @@ function editKuyu(id){
   document.getElementById('k-az').value   = k.az||'';
   document.getElementById('k-eg').value   = k.eg||'';
   document.getElementById('k-der').value  = k.der||'';
-  document.getElementById('k-guncel').value = k.guncel||'';
   document.getElementById('k-cap').value  = k.cap||'';
   document.getElementById('k-y').value    = k.y||'';
   document.getElementById('k-x').value    = k.x||'';
@@ -1468,7 +1475,6 @@ function saveKuyu(){
     az:  document.getElementById('k-az').value,
     eg:  document.getElementById('k-eg').value,
     der: parseFloat(document.getElementById('k-der').value)||0,
-    guncel: parseFloat(document.getElementById('k-guncel').value)||0,
     cap: document.getElementById('k-cap').value.trim(),
     y:   parseFloat(document.getElementById('k-y').value)||0,
     x:   parseFloat(document.getElementById('k-x').value)||0,
