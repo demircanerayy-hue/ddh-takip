@@ -3,11 +3,11 @@ import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-4';
 // ── SABITLER ────────────────────────────────────────────────
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
-  'GS-200':       '#0071e3',  // mavi
-  'DBC-U6':       '#8b5cf6',  // mor
-  'BATUHAN-600X': '#f97316',  // turuncu
-  'GS-600':       '#10b981',  // yeşil
-  'BDU-600':      '#cc0000',  // kırmızı
+  'GS-200':       '#e9cd53',
+  'DBC-U6':       '#606363',
+  'BATUHAN-600X': '#8a7753',
+  'GS-600':       '#96999b',
+  'BDU-600':      '#231f20',
 };
 const VRD_LABEL = {1:'00:00—08:00', 2:'08:00—16:00', 3:'16:00—00:00'};
 const VRD_CLASS = {1:'v1-tag', 2:'v2-tag', 3:'v3-tag'};
@@ -784,7 +784,7 @@ function renderDash(){
       }
     }
 
-    const mRenk = MAKINE_RENK[m] || '#94a3b8';
+    const mRenk = MAKINE_RENK[m] || '#96999b';
     return `<tr style="border-left:3px solid ${mRenk}">
       <td><span class="kn" style="font-size:12px;color:${mRenk}">${esc(m)}</span></td>
       <td>${durumHtml}</td>
@@ -861,8 +861,8 @@ function makeLegend(data, toplam, unit){
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f2;">
       <div style="width:10px;height:10px;border-radius:50%;background:${d.color};flex-shrink:0"></div>
       <span style="color:#424245;flex:1;font-size:12px;">${d.label}</span>
-      <span style="color:#1d1d1f;font-weight:600;font-size:12px;">${typeof d.val === 'number' ? d.val.toFixed(2) : d.val} <span style="color:#86868b;font-weight:400;font-size:11px">${unit}</span></span>
-      <span style="color:#86868b;font-size:11px;min-width:30px;text-align:right">%${pct}</span>
+      <span style="color:#231f20;font-weight:600;font-size:12px;">${typeof d.val === 'number' ? d.val.toFixed(2) : d.val} <span style="color:#606363;font-weight:400;font-size:11px">${unit}</span></span>
+      <span style="color:#606363;font-size:11px;min-width:30px;text-align:right">%${pct}</span>
     </div>`;
   }).join('');
 }
@@ -873,12 +873,12 @@ function drawPieDurak(){
   if(!wrap) return;
 
   const NEDEN_COLORS = {
-    'ELEKTRİK KESİNTİSİ': '#fb923c',
-    'DUMAN':               '#f87171',
-    'SU KESİNTİSİ':        '#60a5fa',
-    'TEKNİK ARIZA':        '#a78bfa',
-    'BAKIM':               '#4ade80',
-    'DİĞER':               '#94a3b8',
+    'ELEKTRİK KESİNTİSİ': '#8a7753',
+    'DUMAN':               '#231f20',
+    'SU KESİNTİSİ':        '#96999b',
+    'TEKNİK ARIZA':        '#96999b',
+    'BAKIM':               '#606363',
+    'DİĞER':               '#96999b',
   };
 
   const ayDurak = filtreliDurak();
@@ -890,7 +890,7 @@ function drawPieDurak(){
   });
 
   const data = Object.entries(nedenMap)
-    .map(([n, dk]) => ({ label: n, val: dk, color: NEDEN_COLORS[n] || '#94a3b8' }))
+    .map(([n, dk]) => ({ label: n, val: dk, color: NEDEN_COLORS[n] || '#96999b' }))
     .filter(d => d.val > 0)
     .sort((a,b) => b.val - a.val);
 
@@ -904,10 +904,10 @@ function drawPieDurak(){
     return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0f0f0;">
       <div style="width:12px;height:12px;border-radius:50%;background:${d.color};flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,0.15)"></div>
       <span style="color:#424245;flex:1;font-size:11px;font-weight:500">${d.label}</span>
-      <span style="color:#1d1d1f;font-weight:700;font-size:12px">${d.val}<span style="color:#86868b;font-weight:400;font-size:10px"> dk</span></span>
-      <span style="color:#86868b;font-size:11px;min-width:28px;text-align:right">%${pct}</span>
+      <span style="color:#231f20;font-weight:700;font-size:12px">${d.val}<span style="color:#606363;font-weight:400;font-size:10px"> dk</span></span>
+      <span style="color:#606363;font-size:11px;min-width:28px;text-align:right">%${pct}</span>
     </div>`;
-  }).join('') : '<p style="color:#86868b;font-size:12px;text-align:center;padding:12px">Bu ay duraklama kaydı yok</p>';
+  }).join('') : '<p style="color:#606363;font-size:12px;text-align:center;padding:12px">Bu ay duraklama kaydı yok</p>';
 
   wrap.innerHTML = svg + `<div style="width:100%;max-width:240px">${legend}</div>`;
 
@@ -990,7 +990,7 @@ function renderVardiyaPerf(){
       </tr></thead>
       <tbody>
         ${rows.map(r => {
-          const rc = MAKINE_RENK[r.m] || '#94a3b8';
+          const rc = MAKINE_RENK[r.m] || '#96999b';
           return [
             `<tr style="border-left:3px solid ${rc}">
               <td rowspan="3"><span class="kn" style="font-size:11px;color:${rc}">${esc(r.m)}</span></td>
@@ -1028,7 +1028,7 @@ function drawPie(){
         .filter(r=>r.makine===m && r.tarih && r.tarih>=bas && r.tarih<=bit)
         .reduce((s,r)=>s+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0),0);
     }
-    return { label: m, val, color: MAKINE_RENK[m] || '#94a3b8' };
+    return { label: m, val, color: MAKINE_RENK[m] || '#96999b' };
   }).filter(d => d.val > 0);
 
   const toplam = data.reduce((s,d) => s+d.val, 0);
@@ -1222,9 +1222,9 @@ function renderTumu(){
     ${ayRecs.map(r=>{
       const s1=parseFloat(r.s1)||0, s2=parseFloat(r.s2)||0, s3=parseFloat(r.s3)||0;
       const toplam=s1+s2+s3;
-      const rc=MAKINE_RENK[r.makine]||'#94a3b8';
+      const rc=MAKINE_RENK[r.makine]||'#96999b';
       const sondajCell=r.sondaj&&r.sondaj.includes('/')
-        ?`<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#ef4444;font-weight:700" title="Biten kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0].trim())}</span></div><div style="padding-left:4px;color:var(--text3);font-size:10px;line-height:1">↓</div><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#22c55e;font-weight:700" title="Başlayan kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1].trim())}</span></div></div>`
+        ?`<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#231f20;font-weight:700" title="Biten kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0].trim())}</span></div><div style="padding-left:4px;color:var(--text3);font-size:10px;line-height:1">↓</div><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;color:#606363;font-weight:700" title="Başlayan kuyu">■</span><span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1].trim())}</span></div></div>`
         :`<span class="kn" style="font-size:11px">${esc(r.sondaj||'—')}</span>`;
       const vCell=v=>v>0
         ?`<td class="c"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;color:var(--text)">${parseFloat(v).toFixed(2)}</span></td>`
@@ -1309,12 +1309,12 @@ function renderMak(m){
     const sondajCell = r.sondaj && r.sondaj.includes('/')
       ? `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
            <div style="display:flex;align-items:center;gap:4px">
-             <span style="font-size:9px;color:#ef4444;font-weight:700" title="Biten kuyu">■</span>
+             <span style="font-size:9px;color:#231f20;font-weight:700" title="Biten kuyu">■</span>
              <span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[0].trim())}</span>
            </div>
            <div style="padding-left:4px;color:var(--text3);font-size:10px;line-height:1">↓</div>
            <div style="display:flex;align-items:center;gap:4px">
-             <span style="font-size:9px;color:#22c55e;font-weight:700" title="Başlayan kuyu">■</span>
+             <span style="font-size:9px;color:#606363;font-weight:700" title="Başlayan kuyu">■</span>
              <span class="kn" style="font-size:11px">${esc(r.sondaj.split('/')[1].trim())}</span>
            </div>
          </div>`
@@ -1880,7 +1880,7 @@ function drawKumulatif(){
   }
 
   // Gerçekleşen çizgi
-  ctx.strokeStyle='#2ecc71'; ctx.lineWidth=2; ctx.setLineDash([]);
+  ctx.strokeStyle='#606363'; ctx.lineWidth=2; ctx.setLineDash([]);
   ctx.beginPath();
   kumData.forEach((d,i) => {
     const x=xPos(d.tarih), y=yPos(d.kum);
@@ -1891,7 +1891,7 @@ function drawKumulatif(){
   // Noktalar
   kumData.forEach(d => {
     ctx.beginPath(); ctx.arc(xPos(d.tarih), yPos(d.kum), 3, 0, 2*Math.PI);
-    ctx.fillStyle='#2ecc71'; ctx.fill();
+    ctx.fillStyle='#606363'; ctx.fill();
   });
 
   // X ekseni günler
@@ -1904,7 +1904,7 @@ function drawKumulatif(){
   // Son değer etiketi
   if(kumData.length){
     const last = kumData[kumData.length-1];
-    ctx.fillStyle='#2ecc71'; ctx.font='bold 11px IBM Plex Mono,monospace'; ctx.textAlign='left';
+    ctx.fillStyle='#606363'; ctx.font='bold 11px IBM Plex Mono,monospace'; ctx.textAlign='left';
     ctx.fillText(last.kum.toFixed(2)+'m', xPos(last.tarih)+6, yPos(last.kum)+4);
   }
 }
@@ -1950,14 +1950,14 @@ function renderDurakBolge(){
   // Makine bazlı duraklama
   const makineData = MAKINELER.map(m => {
     const dk = ayDurak.filter(d=>d.makine===m).reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
-    return {label:m, val:dk, color:MAKINE_RENK[m]||'#94a3b8'};
+    return {label:m, val:dk, color:MAKINE_RENK[m]||'#96999b'};
   }).filter(d=>d.val>0);
 
   // Neden bazlı duraklama
-  const NEDEN_COLORS={'ELEKTRİK KESİNTİSİ':'#fb923c','DUMAN':'#f87171','SU KESİNTİSİ':'#60a5fa','TEKNİK ARIZA':'#a78bfa','BAKIM':'#4ade80','DİĞER':'#94a3b8'};
+  const NEDEN_COLORS={'ELEKTRİK KESİNTİSİ':'#8a7753','DUMAN':'#231f20','SU KESİNTİSİ':'#96999b','TEKNİK ARIZA':'#96999b','BAKIM':'#606363','DİĞER':'#96999b'};
   const nedenMap={};
   ayDurak.forEach(d=>{ const n=d.neden||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
-  const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#94a3b8'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
+  const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#96999b'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
 
   function makeSvgBar(data, title, W=380){
     const barH=28, gap=8, PAD_L=130, topPad=10;
@@ -1968,7 +1968,7 @@ function renderDurakBolge(){
       const y=topPad+i*(barH+gap);
       const w=Math.max(4,Math.round((d.val/maxVal)*(W-PAD_L-40)));
       bars+=`<rect x="${PAD_L}" y="${y}" width="${w}" height="${barH}" rx="4" fill="${d.color}" opacity="0.85"><title>${d.label}: ${d.val}dk</title></rect>`;
-      bars+=`<text x="${PAD_L-6}" y="${y+barH/2+4}" text-anchor="end" font-size="10" fill="#6b7280" font-weight="500">${d.label.length>16?d.label.slice(0,14)+'…':d.label}</text>`;
+      bars+=`<text x="${PAD_L-6}" y="${y+barH/2+4}" text-anchor="end" font-size="10" fill="#606363" font-weight="500">${d.label.length>16?d.label.slice(0,14)+'…':d.label}</text>`;
       bars+=`<text x="${PAD_L+w+5}" y="${y+barH/2+4}" font-size="10" fill="${d.color}" font-weight="700">${d.val}dk</text>`;
     });
     return `<div style="margin-bottom:20px">
@@ -2023,7 +2023,7 @@ function drawDurakTrend(){
   const barW = Math.max(4, CW/sonGun*0.6);
   gunler.forEach(g=>{
     const x=xP(g), dk=gunMap[g], h=(dk/maxDk)*CH;
-    ctx.fillStyle = dk>120?'#e74c3c':dk>60?'#f39c12':'#e67e22';
+    ctx.fillStyle = dk>120?'#231f20':dk>60?'#8a7753':'#8a7753';
     ctx.fillRect(x-barW/2, yP(dk), barW, h);
   });
 
@@ -2042,7 +2042,7 @@ const CEYREK_AYLAR = {
   'Q4': ['10','11','12'],
 };
 const CEYREK_LABEL = {'Q1':'1. Çeyrek (Ocak-Mart)','Q2':'2. Çeyrek (Nisan-Haziran)','Q3':'3. Çeyrek (Temmuz-Eylül)','Q4':'4. Çeyrek (Ekim-Aralık)'};
-const CEYREK_RENK  = {'Q1':'#3b82f6','Q2':'#10b981','Q3':'#f97316','Q4':'#8b5cf6'};
+const CEYREK_RENK  = {'Q1':'#e9cd53','Q2':'#606363','Q3':'#8a7753','Q4':'#96999b'};
 
 function loadButce(){
   // Firebase'den load() ile gelen data içinden çek
@@ -2327,7 +2327,7 @@ function ozetMakineRows(period){
     const verim = gun ? metraj / gun : 0;
     const aktif = (db.kuyular || []).filter(k => makineEslesir(k.makine, m) && isAktifKuyu(k)).length;
     const tamam = (db.kuyular || []).filter(k => makineEslesir(k.makine, m) && ozetInPeriod(k.bit, period)).length;
-    return {m, metraj, gun, durak, verim, aktif, tamam, color: MAKINE_RENK[m] || '#64748b'};
+    return {m, metraj, gun, durak, verim, aktif, tamam, color: MAKINE_RENK[m] || '#606363'};
   });
 }
 
@@ -2427,13 +2427,13 @@ function renderOzetInsights(rows, period){
 function renderOzetDurak(period){
   const wrap = document.getElementById('ozet-durak-wrap');
   if(!wrap) return;
-  const colors = {'ELEKTRİK KESİNTİSİ':'#fb923c','DUMAN':'#f87171','SU KESİNTİSİ':'#60a5fa','TEKNİK ARIZA':'#a78bfa','BAKIM':'#4ade80','DİĞER':'#94a3b8'};
+  const colors = {'ELEKTRİK KESİNTİSİ':'#8a7753','DUMAN':'#231f20','SU KESİNTİSİ':'#96999b','TEKNİK ARIZA':'#96999b','BAKIM':'#606363','DİĞER':'#96999b'};
   const map = {};
   (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period)).forEach(d => {
     const n = d.neden || 'DİĞER';
     map[n] = (map[n] || 0) + (parseFloat(d.dk)||0);
   });
-  const data = Object.entries(map).map(([label,val]) => ({label, val, color:colors[label] || '#94a3b8'})).sort((a,b)=>b.val-a.val);
+  const data = Object.entries(map).map(([label,val]) => ({label, val, color:colors[label] || '#96999b'})).sort((a,b)=>b.val-a.val);
   if(!data.length){
     wrap.innerHTML = '<div class="ozet-empty">Bu dönem duraklama kaydı yok.</div>';
     return;
@@ -2485,7 +2485,7 @@ function renderOzetPage(){
 }
 
 // ── Profesyonel SVG bar yardımcısı ──────────────────────────
-function _svgChart({W, H, PAD_L=52, PAD_T=16, PAD_B=44, data, maxVal, barW, gap, labels, showVal=true, accent='#3b82f6'}){
+function _svgChart({W, H, PAD_L=52, PAD_T=16, PAD_B=44, data, maxVal, barW, gap, labels, showVal=true, accent='#e9cd53'}){
   // data: [{x, val, color, label2?}]
   let grid='', yTicks='', bars='';
   const CH = H - PAD_T - PAD_B;
@@ -2493,7 +2493,7 @@ function _svgChart({W, H, PAD_L=52, PAD_T=16, PAD_B=44, data, maxVal, barW, gap,
     const y = PAD_T + CH*(1-r);
     const v = Math.round(maxVal*r);
     grid   += `<line x1="${PAD_L}" y1="${y}" x2="${W-8}" y2="${y}" stroke="var(--bg4)" stroke-width="1"/>`;
-    yTicks += `<text x="${PAD_L-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="IBM Plex Mono,monospace">${v}</text>`;
+    yTicks += `<text x="${PAD_L-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#96999b" font-family="IBM Plex Mono,monospace">${v}</text>`;
   });
   data.forEach(d=>{
     const h = Math.max(3, Math.round((d.val/maxVal)*CH));
@@ -2558,7 +2558,7 @@ function drawOzetYillik(yil){
   if(!wrap) return;
 
   const ayAdi=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const QRENK=['#3b82f6','#3b82f6','#3b82f6','#10b981','#10b981','#10b981','#f97316','#f97316','#f97316','#8b5cf6','#8b5cf6','#8b5cf6'];
+  const QRENK=['#e9cd53','#e9cd53','#e9cd53','#606363','#606363','#606363','#8a7753','#8a7753','#8a7753','#96999b','#96999b','#96999b'];
   const secili = ozetPeriod(yil);
 
   const months=[];
@@ -2570,7 +2570,7 @@ function drawOzetYillik(yil){
 
   const maxVal=Math.max(...months.map(m=>m.val),1);
   const QLegend=['Q1','Q2','Q3','Q4'].map((l,i)=>
-    `<span><i class="ozet-real-box" style="--row-color:${['#3b82f6','#10b981','#f97316','#8b5cf6'][i]}"></i>${l}</span>`).join('');
+    `<span><i class="ozet-real-box" style="--row-color:${['#e9cd53','#606363','#8a7753','#96999b'][i]}"></i>${l}</span>`).join('');
 
   wrap.innerHTML=`<div class="ozet-chart-legend">${QLegend}</div>
   <div class="ozet-year-chart">${months.map(m => {
@@ -2589,7 +2589,7 @@ function drawOzetMakCeyrek(yil){
 
   const qs=['Q1','Q2','Q3','Q4'];
   const mData=MAKINELER.map(m=>({
-    m, color:MAKINE_RENK[m]||'#94a3b8',
+    m, color:MAKINE_RENK[m]||'#96999b',
     vals:qs.map(q=>getCeyrekMetraj(q,yil))
   })).filter(d=>d.vals.some(v=>v>0));
 
@@ -2607,7 +2607,7 @@ function drawOzetMakCeyrek(yil){
   [0,0.25,0.5,0.75,1].forEach(r=>{
     const y=PAD_T+CH*(1-r);
     grid   +=`<line x1="${PAD_L}" y1="${y}" x2="${W-8}" y2="${y}" stroke="var(--bg4)" stroke-width="1"/>`;
-    yTicks +=`<text x="${PAD_L-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="IBM Plex Mono,monospace">${Math.round(maxVal*r)}</text>`;
+    yTicks +=`<text x="${PAD_L-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#96999b" font-family="IBM Plex Mono,monospace">${Math.round(maxVal*r)}</text>`;
   });
 
   qs.forEach((q,qi)=>{
@@ -2624,7 +2624,7 @@ function drawOzetMakCeyrek(yil){
     xlabels+=`<text x="${gcx}" y="${PAD_T+CH+17}" text-anchor="middle" font-size="11" fill="${clr}" font-weight="700">${q}</text>`;
   });
 
-  const legend=mData.map(ds=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#6b7280"><span style="width:10px;height:10px;border-radius:2px;background:${ds.color};display:inline-block"></span>${ds.m}</span>`).join('');
+  const legend=mData.map(ds=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#606363"><span style="width:10px;height:10px;border-radius:2px;background:${ds.color};display:inline-block"></span>${ds.m}</span>`).join('');
 
   wrap.innerHTML=`<div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">${legend}</div>
   <div style="overflow-x:auto"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
@@ -2661,7 +2661,7 @@ function renderUyarilar(){
   });
 
   if(!uyarilar.length){
-    wrap.innerHTML = `<div style="background:rgba(39,174,96,.06);border:1px solid rgba(39,174,96,.15);border-radius:var(--r);padding:12px 16px;font-size:12px;color:var(--green)">✓ Aktif uyarı yok</div>`;
+    wrap.innerHTML = `<div style="background:rgba(96,99,99,.06);border:1px solid rgba(96,99,99,.15);border-radius:var(--r);padding:12px 16px;font-size:12px;color:var(--green)">✓ Aktif uyarı yok</div>`;
     return;
   }
 
@@ -3017,11 +3017,11 @@ onAuthStateChanged(fbAuth, (user) => {
 // ══════════════════════════════════════════════════════════════
 
 const MAKINE_RENKLER_V2 = {
-  'GS-200':       '#0071e3',
-  'DBC-U6':       '#1a8c45',
-  'BATUHAN-600X': '#bf8700',
-  'GS-600':       '#6e3ab0',
-  'BDU-600':      '#cc0000',
+  'GS-200':       '#e9cd53',
+  'DBC-U6':       '#606363',
+  'BATUHAN-600X': '#8a7753',
+  'GS-600':       '#96999b',
+  'BDU-600':      '#231f20',
 };
 
 // ── CANVAS DRAWING v3 — HIGH DPI ────────────────────────────────
@@ -3243,7 +3243,7 @@ function ddh_drawRigLegacy(ctx, rigColor, durum, t) {
   // Beacon ışığı (aktif: titriyor)
   if (isAktif) {
     const bAlpha = 0.5 + Math.sin(t * 3.5) * 0.4;
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = '#e9cd53';
     ctx.globalAlpha = bAlpha;
     ctx.beginPath(); ctx.arc(55, 2.5, 3, 0, PI*2); ctx.fill();
     // Halo
@@ -3346,8 +3346,8 @@ function ddh_drawRigLegacy(ctx, rigColor, durum, t) {
   ctx.shadowBlur = 5;
 
   // Dış koni gövdesi
-  const bitColor = isAktif ? '#ef4444' : 'rgba(100,108,128,0.8)';
-  const bitDark  = isAktif ? '#b91c1c' : 'rgba(70,78,98,0.8)';
+  const bitColor = isAktif ? '#231f20' : 'rgba(100,108,128,0.8)';
+  const bitDark  = isAktif ? '#231f20' : 'rgba(70,78,98,0.8)';
   ctx.fillStyle = bitColor;
   ctx.beginPath();
   ctx.moveTo(0, -8);
@@ -3441,12 +3441,12 @@ function ddh_drawRigLegacy(ctx, rigColor, durum, t) {
   if (isDurak) {
     ctx.save();
     // Arka plan
-    ctx.fillStyle = 'rgba(178,80,0,0.14)';
+    ctx.fillStyle = 'rgba(138,119,83,0.14)';
     ctx.beginPath(); ctx.arc(84, 20, 11, 0, PI*2); ctx.fill();
-    ctx.strokeStyle = '#b25000'; ctx.lineWidth = 1.1;
+    ctx.strokeStyle = '#8a7753'; ctx.lineWidth = 1.1;
     ctx.beginPath(); ctx.arc(84, 20, 11, 0, PI*2); ctx.stroke();
     // Pause çubukları
-    ctx.fillStyle = '#b25000';
+    ctx.fillStyle = '#8a7753';
     ddh_roundRect(ctx, 80.5, 14, 3.5, 12, 1.5); ctx.fill();
     ddh_roundRect(ctx, 86, 14, 3.5, 12, 1.5); ctx.fill();
     ctx.restore();
@@ -3471,7 +3471,7 @@ function ddh_drawRigLegacy(ctx, rigColor, durum, t) {
 
 // renderSondajAnim içinde canvas setup
 function ddh_hexToRgb(hex) {
-  const clean = String(hex || '#64748b').replace('#', '');
+  const clean = String(hex || '#606363').replace('#', '');
   const full = clean.length === 3 ? clean.split('').map(ch => ch + ch).join('') : clean;
   return {
     r: parseInt(full.slice(0, 2), 16) || 100,
@@ -3767,7 +3767,7 @@ function ddh_drawRig(ctx, rigColor, durum, t) {
   ctx.rotate(isAktif ? t * 8.2 : 0);
   ctx.shadowColor = 'rgba(0,0,0,.3)';
   ctx.shadowBlur = 4;
-  ctx.fillStyle = isAktif ? '#dc2626' : 'rgba(91,98,118,.88)';
+  ctx.fillStyle = isAktif ? '#231f20' : 'rgba(91,98,118,.88)';
   ctx.beginPath();
   ctx.moveTo(0, -8);
   ctx.bezierCurveTo(-5, -4, -7, 2, -4.8, 9);
@@ -3781,19 +3781,19 @@ function ddh_drawRig(ctx, rigColor, durum, t) {
   ctx.beginPath(); ctx.moveTo(-5, -1); ctx.lineTo(-2.7, 8); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 8.5); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(5, -1); ctx.lineTo(2.7, 8); ctx.stroke();
-  ctx.fillStyle = isAktif ? '#991b1b' : 'rgba(58,65,84,.86)';
+  ctx.fillStyle = isAktif ? '#231f20' : 'rgba(58,65,84,.86)';
   ddh_roundRect(ctx, -5.2, -10.5, 10.4, 4.2, 2);
   ctx.fill();
   ctx.restore();
 
   if (isDurak || !isAktif) {
     const x = 86, y = 20;
-    ctx.fillStyle = isDurak ? 'rgba(178,80,0,.13)' : 'rgba(100,108,128,.10)';
+    ctx.fillStyle = isDurak ? 'rgba(138,119,83,.13)' : 'rgba(100,108,128,.10)';
     ctx.beginPath(); ctx.arc(x, y, 11, 0, PI * 2); ctx.fill();
-    ctx.strokeStyle = isDurak ? '#b25000' : 'rgba(100,108,128,.42)';
+    ctx.strokeStyle = isDurak ? '#8a7753' : 'rgba(100,108,128,.42)';
     ctx.lineWidth = 1.1;
     ctx.beginPath(); ctx.arc(x, y, 11, 0, PI * 2); ctx.stroke();
-    ctx.fillStyle = isDurak ? '#b25000' : 'rgba(100,108,128,.58)';
+    ctx.fillStyle = isDurak ? '#8a7753' : 'rgba(100,108,128,.58)';
     if (isDurak) {
       ddh_roundRect(ctx, x - 4.2, y - 5.8, 3.2, 11.6, 1.3); ctx.fill();
       ddh_roundRect(ctx, x + 1.2, y - 5.8, 3.2, 11.6, 1.3); ctx.fill();
@@ -3831,7 +3831,7 @@ function renderSondajAnim() {
     ddhDestroyRigControllers();
     grid.innerHTML = '';
     MAKINELER.forEach(makine => {
-      const temaRenk = MAKINE_RENKLER_V2[makine] || '#64748b';
+      const temaRenk = MAKINE_RENKLER_V2[makine] || '#606363';
       const rigRenk = temaRenk;
 
       // Filtre duyarlı kuyu: bugünün ayıysa gerçek aktif, geçmiş/gelecek aydaysa
@@ -3958,7 +3958,7 @@ function _ddhLoop(ts) {
       const ctx = ddh_initCanvas(canvas);
       const donemKuyu = ayMakineAktifKuyu(makine);
       const durum = ddhMakineDurum(makine, donemKuyu);
-      const renk = MAKINE_RENKLER_V2[makine] || '#64748b';
+      const renk = MAKINE_RENKLER_V2[makine] || '#606363';
       ddh_drawRig(ctx, renk, durum, t);
     });
 
