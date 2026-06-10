@@ -2250,19 +2250,32 @@ function opexRateAtDepth(tariff, depth){
   return (bands.find(b => depth >= b.from && depth < b.to) || bands[bands.length - 1]).rate;
 }
 
-function opexDrillingCost(metre, startDepth, tariff){
+function opexDepthBandLabel(band, isLast){
+  if(isLast || !band.to) return `${band.from}+ m`;
+  return `${band.from}-${band.to} m`;
+}
+
+function opexDrillingParts(metre, startDepth, tariff){
   let left = Math.max(0, parseFloat(metre) || 0);
   let depth = Math.max(0, parseFloat(startDepth) || 0);
-  let cost = 0;
+  const parts = [];
   while(left > 0.0001){
-    const band = tariff.rates.find(b => depth >= b.from && depth < b.to) || tariff.rates[tariff.rates.length - 1];
+    let bandIndex = tariff.rates.findIndex(b => depth >= b.from && depth < b.to);
+    if(bandIndex < 0) bandIndex = tariff.rates.length - 1;
+    const band = tariff.rates[bandIndex];
     const next = band.to && depth < band.to ? band.to : depth + left;
     const part = Math.min(left, next - depth);
     const rate = opexRateAtDepth(tariff, depth);
-    cost += part * rate;
+    parts.push({bandIndex, metre:part, rate, cost:part * rate});
     depth += part;
     left -= part;
   }
+  return parts;
+}
+
+function opexDrillingCost(metre, startDepth, tariff){
+  let cost = 0;
+  opexDrillingParts(metre, startDepth, tariff).forEach(p => { cost += p.cost; });
   return cost;
 }
 
@@ -2296,7 +2309,19 @@ function ozetOpexSummary(period){
   let missing = 0;
 
   Object.keys(OPEX_TARIFFS).forEach(k => {
-    byTariff[k] = {key:k, label:OPEX_TARIFFS[k].label, note:OPEX_TARIFFS[k].note, metres:0, cost:0};
+    byTariff[k] = {
+      key:k,
+      label:OPEX_TARIFFS[k].label,
+      note:OPEX_TARIFFS[k].note,
+      metres:0,
+      cost:0,
+      bands:OPEX_TARIFFS[k].rates.map((b,i,arr) => ({
+        label:opexDepthBandLabel(b, i === arr.length - 1),
+        rate:b.rate,
+        metres:0,
+        cost:0
+      }))
+    };
   });
 
   allRows.forEach(r => {
@@ -2306,13 +2331,20 @@ function ozetOpexSummary(period){
       const key = opexTariffKey(kuyu && kuyu.eg);
       const tariff = OPEX_TARIFFS[key];
       const start = depthByKuyu[e.no] || parseFloat(kuyu && (kuyu.bm || kuyu.guncelBaslangic)) || 0;
-      const cost = opexDrillingCost(e.metre, start, tariff);
+      const parts = opexDrillingParts(e.metre, start, tariff);
+      const cost = parts.reduce((s,p) => s + p.cost, 0);
       depthByKuyu[e.no] = start + e.metre;
       if(!ozetInPeriod(r.tarih, period)) return;
       drilling += cost;
       metres += e.metre;
       byTariff[key].metres += e.metre;
       byTariff[key].cost += cost;
+      parts.forEach(p => {
+        const band = byTariff[key].bands[p.bandIndex];
+        if(!band) return;
+        band.metres += p.metre;
+        band.cost += p.cost;
+      });
       const machine = r.makine || 'Makine yok';
       byMachine[machine] = byMachine[machine] || {machine, metres:0, cost:0};
       byMachine[machine].metres += e.metre;
@@ -2359,7 +2391,11 @@ function renderOzetOpex(period){
         <div class="ozet-opex-title">Eğim ve derinlik tarifesi</div>
         <div class="ozet-opex-bars">${s.byTariff.map(x => `
           <div class="ozet-opex-row" style="--w:${Math.round(x.cost/maxTariff*100)}%">
-            <div><strong>${esc(x.label)}</strong><span>${esc(x.note)} · ${ozetFmt(x.metres,1)} m</span></div>
+            <div>
+              <strong>${esc(x.label)}</strong>
+              <span>${esc(x.note)} · ${ozetFmt(x.metres,1)} m</span>
+              <div class="ozet-rate-chips">${x.bands.filter(b => b.metres > 0).map(b => `<em>${esc(b.label)} · $${b.rate}/m · ${ozetFmt(b.metres,1)} m</em>`).join('') || '<em>Derinlik verisi yok</em>'}</div>
+            </div>
             <i></i>
             <b>${opexFmtUsd(x.cost)}</b>
           </div>`).join('')}</div>

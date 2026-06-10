@@ -1408,7 +1408,7 @@ canvas.ddh-rig-canvas {
 .ozet-opex-bars{display:grid;gap:9px;}
 .ozet-opex-row{
   display:grid;
-  grid-template-columns:128px minmax(0,1fr) 92px;
+  grid-template-columns:230px minmax(0,1fr) 92px;
   gap:10px;
   align-items:center;
 }
@@ -1440,6 +1440,25 @@ canvas.ddh-rig-canvas {
   background:linear-gradient(90deg,var(--gold),#d8bd45);
 }
 .ozet-opex-row.machine i{background:linear-gradient(90deg,var(--blue),#8aa2c8);}
+.ozet-rate-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  margin-top:6px;
+}
+.ozet-rate-chips em{
+  display:inline-flex;
+  align-items:center;
+  min-height:18px;
+  padding:2px 6px;
+  border-radius:6px;
+  background:var(--bg4);
+  color:var(--text2);
+  font-style:normal;
+  font-size:9px;
+  font-weight:900;
+  white-space:nowrap;
+}
 .ozet-opex-row b{
   text-align:right;
   color:var(--text);
