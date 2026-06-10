@@ -1,13 +1,13 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_NEXTID } from './data.js';
-import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-1';
+import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-2';
 // ── SABITLER ────────────────────────────────────────────────
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
-  'GS-200':       '#3b82f6',  // mavi
+  'GS-200':       '#0071e3',  // mavi
   'DBC-U6':       '#8b5cf6',  // mor
   'BATUHAN-600X': '#f97316',  // turuncu
   'GS-600':       '#10b981',  // yeşil
-  'BDU-600':      '#ef4444',  // kırmızı
+  'BDU-600':      '#cc0000',  // kırmızı
 };
 const VRD_LABEL = {1:'00:00—08:00', 2:'08:00—16:00', 3:'16:00—00:00'};
 const VRD_CLASS = {1:'v1-tag', 2:'v2-tag', 3:'v3-tag'};

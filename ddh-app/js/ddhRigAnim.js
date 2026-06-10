@@ -1271,17 +1271,6 @@
       ctx.beginPath(); ctx.arc(15, 17, 3, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.font = "500 8px ui-monospace, Consolas, monospace";
-      ctx.textAlign = "left";
-      const opLabel = (this.status === "aktif" || done) ? OP_LABEL[this.opPhase] : null;
-      if (opLabel) {
-        ctx.fillStyle = done ? "rgba(93,217,124,.9)" : "rgba(245,185,66,.85)";
-        ctx.fillText(opLabel, 24, 21);
-      } else {
-        ctx.fillStyle = "rgba(71,85,105,.78)";
-        ctx.fillText(this.status.toUpperCase(), 24, 21);
-      }
-
       if (!this.opts.showDepth) return;
 
       const flash = this.depthFlash;
