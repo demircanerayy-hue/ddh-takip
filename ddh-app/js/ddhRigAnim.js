@@ -542,18 +542,18 @@
 
       // gökyüzü
       const sky = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
-      sky.addColorStop(0, "#0c1019");
-      sky.addColorStop(0.7, "#101521");
-      sky.addColorStop(1, "#0e1119");
+      sky.addColorStop(0, "#f8fafc");
+      sky.addColorStop(0.7, "#eef4fb");
+      sky.addColorStop(1, "#e8eef6");
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-      ctx.fillStyle = "rgba(126,150,190,.05)";
+      ctx.fillStyle = "rgba(93,105,125,.08)";
       for (let y = 12; y < GROUND_Y - 8; y += 16)
         for (let x = 8; x < LOGICAL_W; x += 16)
           ctx.fillRect(x, y, 1, 1);
 
-      ctx.fillStyle = "#0f141e";
+      ctx.fillStyle = "#dfe7f0";
       ctx.beginPath();
       ctx.moveTo(0, 226);
       ctx.lineTo(36, 214); ctx.lineTo(78, 224); ctx.lineTo(120, 210);
@@ -562,16 +562,16 @@
       ctx.closePath(); ctx.fill();
 
       const gr = ctx.createLinearGradient(0, GROUND_Y, 0, LOGICAL_H);
-      gr.addColorStop(0, "#1a2030");
-      gr.addColorStop(1, "#11141d");
+      gr.addColorStop(0, "#edf2f7");
+      gr.addColorStop(1, "#d8e1eb");
       ctx.fillStyle = gr;
       ctx.fillRect(0, GROUND_Y, LOGICAL_W, LOGICAL_H - GROUND_Y);
-      ctx.strokeStyle = "rgba(150,170,205,.16)";
+      ctx.strokeStyle = "rgba(100,116,139,.22)";
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(LOGICAL_W, GROUND_Y); ctx.stroke();
 
       const rnd = seedFrom(this.opts.machineName + "rocks");
-      ctx.fillStyle = "#222a3a";
+      ctx.fillStyle = "#c3ccd8";
       for (let i = 0; i < 14; i++) {
         const x = rnd() * LOGICAL_W, y = GROUND_Y + 6 + rnd() * 60, w = 1 + rnd() * 2.4;
         ctx.fillRect(x, y, w, w * 0.7);
@@ -654,7 +654,7 @@
       this.drawOperator(ctx);
 
       if (off) {
-        ctx.fillStyle = "rgba(8,10,15,.52)";
+        ctx.fillStyle = "rgba(248,250,252,.42)";
         ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
       }
       this.drawHUD(ctx);
@@ -1271,19 +1271,15 @@
       ctx.beginPath(); ctx.arc(15, 17, 3, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.font = "600 10.5px ui-monospace, 'IBM Plex Mono', Consolas, monospace";
-      ctx.fillStyle = "rgba(228,234,243,.9)";
-      ctx.textAlign = "left";
-      ctx.fillText(this.opts.machineName, 24, 21);
-
       ctx.font = "500 8px ui-monospace, Consolas, monospace";
+      ctx.textAlign = "left";
       const opLabel = (this.status === "aktif" || done) ? OP_LABEL[this.opPhase] : null;
       if (opLabel) {
         ctx.fillStyle = done ? "rgba(93,217,124,.9)" : "rgba(245,185,66,.85)";
-        ctx.fillText(opLabel, 24, 31);
+        ctx.fillText(opLabel, 24, 21);
       } else {
-        ctx.fillStyle = "rgba(150,165,185,.7)";
-        ctx.fillText(this.status.toUpperCase(), 24, 31);
+        ctx.fillStyle = "rgba(71,85,105,.78)";
+        ctx.fillText(this.status.toUpperCase(), 24, 21);
       }
 
       if (!this.opts.showDepth) return;
@@ -1296,16 +1292,6 @@
         : (off ? "rgba(150,160,175,.85)" : "#f5b942");
       ctx.fillText(this.displayDepth.toFixed(1) + " m", 190, 22);
 
-      if (this.opts.plannedDepth > 0) {
-        ctx.font = "500 8px ui-monospace, Consolas, monospace";
-        ctx.fillStyle = "rgba(150,165,185,.75)";
-        ctx.fillText("hedef " + this.opts.plannedDepth.toFixed(0) + " m", 190, 32);
-        const p = clamp(this.displayDepth / this.opts.plannedDepth, 0, 1);
-        ctx.fillStyle = "rgba(150,165,185,.18)";
-        rr(ctx, 128, 36, 62, 3, 1.5); ctx.fill();
-        ctx.fillStyle = p >= 0.95 ? "#5dd97c" : (off ? "rgba(150,160,175,.5)" : this.opts.color);
-        rr(ctx, 128, 36, Math.max(2, 62 * p), 3, 1.5); ctx.fill();
-      }
       ctx.textAlign = "left";
     }
   }
