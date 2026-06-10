@@ -22,20 +22,20 @@
   --gold:#e9cd53;
   --gold2:#d8bd45;
   --gold-dim:rgba(233,205,83,0.18);
-  --green:#606363;
-  --green-dim:rgba(96,99,99,0.10);
+  --green:#4f7d32;
+  --green-dim:rgba(79,125,50,0.12);
   --red:#231f20;
   --red-dim:rgba(35,31,32,0.08);
-  --blue:#96999b;
-  --blue-dim:rgba(150,153,155,0.12);
-  --warn:#8a7753;
-  --warn-dim:rgba(138,119,83,0.12);
-  --purple:#cbcccd;
-  --purple-dim:rgba(203,204,205,0.20);
+  --blue:#1d4f8f;
+  --blue-dim:rgba(29,79,143,0.12);
+  --warn:#f47721;
+  --warn-dim:rgba(244,119,33,0.12);
+  --purple:#6f6045;
+  --purple-dim:rgba(111,96,69,0.14);
 
-  --v1:#f8f4da; --v1b:#8a7753;
-  --v2:#f1f2f2; --v2b:#606363;
-  --v3:#f6f6f6; --v3b:#96999b;
+  --v1:#edf3e8; --v1b:#4f7d32;
+  --v2:#e8eef6; --v2b:#1d4f8f;
+  --v3:#fdf0e6; --v3b:#f47721;
 
   --r:10px;
   --r2:14px;
@@ -104,10 +104,10 @@ body{
   color:var(--text3);
   white-space:nowrap;
 }
-.save-ind.state-ok{color:var(--green);background:var(--green-dim);border-color:rgba(96,99,99,.22);}
-.save-ind.state-warn{color:var(--warn);background:var(--warn-dim);border-color:rgba(138,119,83,.22);}
+.save-ind.state-ok{color:var(--green);background:var(--green-dim);border-color:rgba(79,125,50,.22);}
+.save-ind.state-warn{color:var(--warn);background:var(--warn-dim);border-color:rgba(244,119,33,.22);}
 .save-ind.state-error{color:var(--red);background:var(--red-dim);border-color:rgba(35,31,32,.22);}
-.save-ind.state-busy{color:var(--blue);background:var(--blue-dim);border-color:rgba(138,119,83,.22);}
+.save-ind.state-busy{color:var(--blue);background:var(--blue-dim);border-color:rgba(29,79,143,.22);}
 
 .toast{
   position:fixed;
@@ -347,9 +347,9 @@ th.stk,td.stk{position:sticky;left:0;z-index:5;}
 thead th.stk{background:var(--bg3);box-shadow:4px 0 8px rgba(0,0,0,0.04);}
 tbody td.stk{background:var(--bg2);box-shadow:4px 0 8px rgba(0,0,0,0.03);}
 
-tbody tr.row-active td{background:rgba(96,99,99,0.04)!important;}
-tbody tr.row-active td.stk{background:rgba(96,99,99,0.06)!important;}
-tbody tr.row-active:hover td{background:rgba(96,99,99,0.07)!important;}
+tbody tr.row-active td{background:rgba(79,125,50,0.04)!important;}
+tbody tr.row-active td.stk{background:rgba(79,125,50,0.06)!important;}
+tbody tr.row-active:hover td{background:rgba(79,125,50,0.07)!important;}
 
 .tw{max-height:calc(100vh - 200px);overflow-y:auto;}
 
@@ -486,9 +486,9 @@ tbody tr.row-active:hover td{background:rgba(96,99,99,0.07)!important;}
 .btn-exp{
   background:var(--green-dim);
   color:var(--green);
-  border:1px solid rgba(96,99,99,0.2);
+  border:1px solid rgba(79,125,50,0.2);
 }
-.btn-exp:hover{background:rgba(96,99,99,0.14);}
+.btn-exp:hover{background:rgba(79,125,50,0.14);}
 
 /* ── TOOLBAR ─────────────────────────────────────────── */
 .tb{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
@@ -901,8 +901,8 @@ th:hover .sort-ico{opacity:1;}
   box-shadow: 0 16px 38px rgba(25, 31, 45, .11), 0 2px 6px rgba(0,0,0,.06);
   transform: translateY(-2px);
 }
-.ddh-rig-card.rig-aktif { border-color: rgba(96,99,99,.35); }
-.ddh-rig-card.rig-durak { border-color: rgba(138,119,83,.3);  }
+.ddh-rig-card.rig-aktif { border-color: rgba(79,125,50,.35); }
+.ddh-rig-card.rig-durak { border-color: rgba(244,119,33,.3);  }
 .ddh-rig-card.rig-pasif { opacity: .65; }
 
 /* Renk şeridi */
@@ -1297,8 +1297,8 @@ canvas.ddh-rig-canvas {
   background:var(--bg2);
   white-space:nowrap;
 }
-.ozet-status.good{color:var(--green);background:var(--green-dim);border-color:rgba(96,99,99,.22);}
-.ozet-status.warn{color:var(--warn);background:var(--warn-dim);border-color:rgba(138,119,83,.22);}
+.ozet-status.good{color:var(--green);background:var(--green-dim);border-color:rgba(79,125,50,.22);}
+.ozet-status.warn{color:var(--warn);background:var(--warn-dim);border-color:rgba(244,119,33,.22);}
 .ozet-status.idle{color:var(--text3);}
 .ozet-machine-name{font-weight:900;color:var(--text);font-size:13px;}
 .ozet-machine-state{font-size:10px;color:var(--text3);font-weight:800;margin-top:2px;}
@@ -1419,7 +1419,7 @@ canvas.ddh-rig-canvas {
   border-radius:999px;
   background:linear-gradient(90deg,var(--gold),#d8bd45);
 }
-.ozet-opex-row.machine i{background:linear-gradient(90deg,var(--blue),#cbcccd);}
+.ozet-opex-row.machine i{background:linear-gradient(90deg,var(--blue),#8aa2c8);}
 .ozet-opex-row b{
   text-align:right;
   color:var(--text);

@@ -4,9 +4,9 @@ import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-4';
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
   'GS-200':       '#e9cd53',
-  'DBC-U6':       '#606363',
-  'BATUHAN-600X': '#8a7753',
-  'GS-600':       '#96999b',
+  'DBC-U6':       '#4f7d32',
+  'BATUHAN-600X': '#f47721',
+  'GS-600':       '#1d4f8f',
   'BDU-600':      '#231f20',
 };
 const VRD_LABEL = {1:'00:00—08:00', 2:'08:00—16:00', 3:'16:00—00:00'};
@@ -873,11 +873,11 @@ function drawPieDurak(){
   if(!wrap) return;
 
   const NEDEN_COLORS = {
-    'ELEKTRİK KESİNTİSİ': '#8a7753',
+    'ELEKTRİK KESİNTİSİ': '#f47721',
     'DUMAN':               '#231f20',
-    'SU KESİNTİSİ':        '#96999b',
-    'TEKNİK ARIZA':        '#96999b',
-    'BAKIM':               '#606363',
+    'SU KESİNTİSİ':        '#1d4f8f',
+    'TEKNİK ARIZA':        '#6f6045',
+    'BAKIM':               '#4f7d32',
     'DİĞER':               '#96999b',
   };
 
@@ -1954,7 +1954,7 @@ function renderDurakBolge(){
   }).filter(d=>d.val>0);
 
   // Neden bazlı duraklama
-  const NEDEN_COLORS={'ELEKTRİK KESİNTİSİ':'#8a7753','DUMAN':'#231f20','SU KESİNTİSİ':'#96999b','TEKNİK ARIZA':'#96999b','BAKIM':'#606363','DİĞER':'#96999b'};
+  const NEDEN_COLORS={'ELEKTRİK KESİNTİSİ':'#f47721','DUMAN':'#231f20','SU KESİNTİSİ':'#1d4f8f','TEKNİK ARIZA':'#6f6045','BAKIM':'#4f7d32','DİĞER':'#96999b'};
   const nedenMap={};
   ayDurak.forEach(d=>{ const n=d.neden||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
   const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#96999b'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
@@ -2023,7 +2023,7 @@ function drawDurakTrend(){
   const barW = Math.max(4, CW/sonGun*0.6);
   gunler.forEach(g=>{
     const x=xP(g), dk=gunMap[g], h=(dk/maxDk)*CH;
-    ctx.fillStyle = dk>120?'#231f20':dk>60?'#8a7753':'#8a7753';
+    ctx.fillStyle = dk>120?'#231f20':dk>60?'#f47721':'#6f6045';
     ctx.fillRect(x-barW/2, yP(dk), barW, h);
   });
 
@@ -2042,7 +2042,7 @@ const CEYREK_AYLAR = {
   'Q4': ['10','11','12'],
 };
 const CEYREK_LABEL = {'Q1':'1. Çeyrek (Ocak-Mart)','Q2':'2. Çeyrek (Nisan-Haziran)','Q3':'3. Çeyrek (Temmuz-Eylül)','Q4':'4. Çeyrek (Ekim-Aralık)'};
-const CEYREK_RENK  = {'Q1':'#e9cd53','Q2':'#606363','Q3':'#8a7753','Q4':'#96999b'};
+const CEYREK_RENK  = {'Q1':'#e9cd53','Q2':'#4f7d32','Q3':'#f47721','Q4':'#1d4f8f'};
 
 function loadButce(){
   // Firebase'den load() ile gelen data içinden çek
@@ -2427,7 +2427,7 @@ function renderOzetInsights(rows, period){
 function renderOzetDurak(period){
   const wrap = document.getElementById('ozet-durak-wrap');
   if(!wrap) return;
-  const colors = {'ELEKTRİK KESİNTİSİ':'#8a7753','DUMAN':'#231f20','SU KESİNTİSİ':'#96999b','TEKNİK ARIZA':'#96999b','BAKIM':'#606363','DİĞER':'#96999b'};
+  const colors = {'ELEKTRİK KESİNTİSİ':'#f47721','DUMAN':'#231f20','SU KESİNTİSİ':'#1d4f8f','TEKNİK ARIZA':'#6f6045','BAKIM':'#4f7d32','DİĞER':'#96999b'};
   const map = {};
   (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period)).forEach(d => {
     const n = d.neden || 'DİĞER';
@@ -2558,7 +2558,7 @@ function drawOzetYillik(yil){
   if(!wrap) return;
 
   const ayAdi=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const QRENK=['#e9cd53','#e9cd53','#e9cd53','#606363','#606363','#606363','#8a7753','#8a7753','#8a7753','#96999b','#96999b','#96999b'];
+  const QRENK=['#e9cd53','#e9cd53','#e9cd53','#4f7d32','#4f7d32','#4f7d32','#f47721','#f47721','#f47721','#1d4f8f','#1d4f8f','#1d4f8f'];
   const secili = ozetPeriod(yil);
 
   const months=[];
@@ -2570,7 +2570,7 @@ function drawOzetYillik(yil){
 
   const maxVal=Math.max(...months.map(m=>m.val),1);
   const QLegend=['Q1','Q2','Q3','Q4'].map((l,i)=>
-    `<span><i class="ozet-real-box" style="--row-color:${['#e9cd53','#606363','#8a7753','#96999b'][i]}"></i>${l}</span>`).join('');
+    `<span><i class="ozet-real-box" style="--row-color:${['#e9cd53','#4f7d32','#f47721','#1d4f8f'][i]}"></i>${l}</span>`).join('');
 
   wrap.innerHTML=`<div class="ozet-chart-legend">${QLegend}</div>
   <div class="ozet-year-chart">${months.map(m => {
@@ -2661,7 +2661,7 @@ function renderUyarilar(){
   });
 
   if(!uyarilar.length){
-    wrap.innerHTML = `<div style="background:rgba(96,99,99,.06);border:1px solid rgba(96,99,99,.15);border-radius:var(--r);padding:12px 16px;font-size:12px;color:var(--green)">✓ Aktif uyarı yok</div>`;
+    wrap.innerHTML = `<div style="background:rgba(79,125,50,.06);border:1px solid rgba(79,125,50,.15);border-radius:var(--r);padding:12px 16px;font-size:12px;color:var(--green)">✓ Aktif uyarı yok</div>`;
     return;
   }
 
@@ -3018,9 +3018,9 @@ onAuthStateChanged(fbAuth, (user) => {
 
 const MAKINE_RENKLER_V2 = {
   'GS-200':       '#e9cd53',
-  'DBC-U6':       '#606363',
-  'BATUHAN-600X': '#8a7753',
-  'GS-600':       '#96999b',
+  'DBC-U6':       '#4f7d32',
+  'BATUHAN-600X': '#f47721',
+  'GS-600':       '#1d4f8f',
   'BDU-600':      '#231f20',
 };
 
