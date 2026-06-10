@@ -49,10 +49,13 @@
   function hexToRgb(hex) {
     const raw = String(hex || "#f5b942").replace("#", "");
     const full = raw.length === 3 ? raw.split("").map(c => c + c).join("") : raw;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
     return {
-      r: parseInt(full.slice(0, 2), 16) || 245,
-      g: parseInt(full.slice(2, 4), 16) || 185,
-      b: parseInt(full.slice(4, 6), 16) || 66
+      r: Number.isNaN(r) ? 245 : r,
+      g: Number.isNaN(g) ? 185 : g,
+      b: Number.isNaN(b) ? 66 : b
     };
   }
   const colA = (hex, a) => { const c = hexToRgb(hex); return `rgba(${c.r},${c.g},${c.b},${a})`; };
@@ -1218,6 +1221,7 @@
       ctx.save();
       ctx.translate(x, footY);
       ctx.rotate(tilt);
+      ctx.scale(1.42, 1.42);
 
       // bacaklar
       const sw = m.moving ? Math.sin(m.step) * 2.6 : 0;
