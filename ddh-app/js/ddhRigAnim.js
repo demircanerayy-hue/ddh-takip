@@ -1221,7 +1221,7 @@
       ctx.save();
       ctx.translate(x, footY);
       ctx.rotate(tilt);
-      ctx.scale(1.42, 1.42);
+      ctx.scale(2, 2);
 
       // bacaklar
       const sw = m.moving ? Math.sin(m.step) * 2.6 : 0;

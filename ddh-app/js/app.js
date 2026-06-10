@@ -1,5 +1,5 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_NEXTID } from './data.js';
-import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-3';
+import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-4';
 // ── SABITLER ────────────────────────────────────────────────
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
