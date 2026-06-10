@@ -1208,6 +1208,26 @@ canvas.ddh-rig-canvas {
   border-color:rgba(138,119,83,.28);
   background:var(--blue-dim);
 }
+.ozet-date-range{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:3px;
+  border:1px solid var(--border2);
+  border-radius:10px;
+  background:var(--bg2);
+}
+.ozet-date-range .fi{
+  width:132px;
+  height:28px;
+  padding:4px 6px;
+  border:none;
+}
+.ozet-date-range span{
+  color:var(--text3);
+  font-size:12px;
+  font-weight:900;
+}
 .ozet-kpi-grid{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
@@ -1641,6 +1661,8 @@ canvas.ddh-rig-canvas {
   .ozet-panel-head small{display:block;text-align:left;margin-top:6px;}
   .ozet-filter-controls .fi{width:100%;}
   .ozet-filter-btn{flex:1 1 calc(50% - 7px);}
+  .ozet-date-range{width:100%;}
+  .ozet-date-range .fi{flex:1 1 0;width:auto;min-width:0;}
   .ozet-budget-row{grid-template-columns:1fr;}
   .ozet-budget-dev{text-align:left;grid-column:auto;}
   .ozet-year-chart{grid-template-columns:repeat(3,1fr);}

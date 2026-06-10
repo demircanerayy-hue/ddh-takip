@@ -2089,6 +2089,8 @@ function ozetAyLabel(ay){
 }
 
 let ozetFilterMode = 'ay';
+let ozetRangeBas = '';
+let ozetRangeBit = '';
 
 function ozetGetAy(){
   const sel = document.getElementById('ozet-ay-sec');
@@ -2107,7 +2109,53 @@ function ozetBuildAySelect(yil){
   sel.value = mevcut && mevcut.startsWith(String(yil)) ? mevcut : `${yil}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
 }
 
+function ozetDefaultRange(){
+  const ay = ozetGetAy();
+  const [y, m] = ay.split('-').map(Number);
+  const sonGun = new Date(y, m, 0).getDate();
+  return {bas:`${ay}-01`, bit:`${ay}-${String(sonGun).padStart(2,'0')}`};
+}
+
+function ozetRangeMonths(bas, bit){
+  const months = [];
+  let [y, m] = bas.slice(0, 7).split('-').map(Number);
+  const end = bit.slice(0, 7);
+  while(`${y}-${String(m).padStart(2,'0')}` <= end){
+    months.push(`${y}-${String(m).padStart(2,'0')}`);
+    m += 1;
+    if(m > 12){ m = 1; y += 1; }
+  }
+  return months;
+}
+
+function ozetSyncRangeInputs(){
+  const basEl = document.getElementById('ozet-bas');
+  const bitEl = document.getElementById('ozet-bit');
+  if(!basEl || !bitEl) return;
+  if(!ozetRangeBas || !ozetRangeBit){
+    const def = ozetDefaultRange();
+    ozetRangeBas = ozetRangeBas || def.bas;
+    ozetRangeBit = ozetRangeBit || def.bit;
+  }
+  basEl.value = ozetRangeBas;
+  bitEl.value = ozetRangeBit;
+}
+
 function ozetPeriod(yil){
+  ozetSyncRangeInputs();
+  if(ozetFilterMode === 'aralik'){
+    let bas = ozetRangeBas;
+    let bit = ozetRangeBit;
+    if(bas && bit && bas > bit) [bas, bit] = [bit, bas];
+    return {
+      mode:'aralik',
+      label:`${fmtDate(bas)} - ${fmtDate(bit)}`,
+      months:ozetRangeMonths(bas, bit),
+      bas,
+      bit,
+      budgetKeys:[]
+    };
+  }
   const ay = ozetGetAy();
   if(ozetFilterMode === 'ay'){
     return {mode:'ay', label:ozetAyLabel(ay), months:[ay], budgetKeys:[]};
@@ -2129,15 +2177,28 @@ function ozetPeriod(yil){
 }
 
 function ozetInPeriod(tarih, period){
+  if(period && period.mode === 'aralik'){
+    return !!tarih && tarih >= period.bas && tarih <= period.bit;
+  }
   return !!tarih && period.months.some(m => tarih.startsWith(m));
 }
 
 function setOzetFilter(mode){
   ozetFilterMode = mode || 'ay';
+  if(ozetFilterMode === 'aralik') ozetSyncRangeInputs();
   document.querySelectorAll('[data-ozet-filter]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.ozetFilter === ozetFilterMode);
   });
   renderOzetPage();
+}
+
+function setOzetRange(){
+  const basEl = document.getElementById('ozet-bas');
+  const bitEl = document.getElementById('ozet-bit');
+  ozetRangeBas = basEl && basEl.value ? basEl.value : ozetRangeBas;
+  ozetRangeBit = bitEl && bitEl.value ? bitEl.value : ozetRangeBit;
+  if(!ozetRangeBas || !ozetRangeBit) return;
+  setOzetFilter('aralik');
 }
 
 function ozetGunlukMetraj(r){
@@ -2978,6 +3039,7 @@ window.autoSaha     = autoSaha;
 window.saveButce    = saveButce;
 window.renderOzetPage = renderOzetPage;
 window.setOzetFilter = setOzetFilter;
+window.setOzetRange = setOzetRange;
 
 // ── INIT ────────────────────────────────────────────────────
 // Preloaded data moved to js/data.js
