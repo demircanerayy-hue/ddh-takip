@@ -3832,7 +3832,7 @@ function renderSondajAnim() {
     grid.innerHTML = '';
     MAKINELER.forEach(makine => {
       const temaRenk = MAKINE_RENKLER_V2[makine] || '#64748b';
-      const rigRenk = '#e2c870';
+      const rigRenk = temaRenk;
 
       // Filtre duyarlı kuyu: bugünün ayıysa gerçek aktif, geçmiş/gelecek aydaysa
       // o dönemde delinen son kuyu — ayMakineAktifKuyu() zaten bunu yapıyor
