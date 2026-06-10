@@ -1,13 +1,13 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_NEXTID } from './data.js';
-import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1';
+import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-2';
 // ── SABITLER ────────────────────────────────────────────────
 const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
 const MAKINE_RENK = {
-  'GS-200':       '#3b82f6',  // mavi
+  'GS-200':       '#0071e3',  // mavi
   'DBC-U6':       '#8b5cf6',  // mor
   'BATUHAN-600X': '#f97316',  // turuncu
   'GS-600':       '#10b981',  // yeşil
-  'BDU-600':      '#ef4444',  // kırmızı
+  'BDU-600':      '#cc0000',  // kırmızı
 };
 const VRD_LABEL = {1:'00:00—08:00', 2:'08:00—16:00', 3:'16:00—00:00'};
 const VRD_CLASS = {1:'v1-tag', 2:'v2-tag', 3:'v3-tag'};
@@ -577,29 +577,6 @@ function aktifMetraj(kuyuNo){
   return toplam;
 }
 
-function kuyuMetrajAt(kuyuNo, bitTarih){
-  let toplam = 0;
-  db.gunluk.forEach(r => {
-    if(bitTarih && (!r.tarih || r.tarih > bitTarih)) return;
-    if(r.sondaj){
-      const sondajlar = kuyuNolariFromSondaj(r.sondaj);
-      if(sondajlar.includes(kuyuNo)) toplam += gunlukMetraj(r);
-    }
-    if(r.kuyular){
-      r.kuyular.forEach(k => {
-        if(k.no === kuyuNo) toplam += parseFloat(k.ilerleme)||0;
-      });
-    }
-  });
-  return toplam;
-}
-
-function kuyuGuncelMetraj(k){
-  const kayitMetraj = aktifMetraj(k.no);
-  const manuelMetraj = parseFloat(k.guncel)||0;
-  return kayitMetraj > 0 ? kayitMetraj : manuelMetraj;
-}
-
 function makineAyMetraj(makine, ay){
   let toplam = 0;
   db.gunluk.filter(r => makineEslesir(r.makine, makine) && r.tarih && r.tarih.startsWith(ay)).forEach(r => {
@@ -1115,7 +1092,7 @@ function renderKuyular(){
 
 function kuyuRow(k){
   const isAktif = isAktifKuyu(k);
-  const met = kuyuGuncelMetraj(k);
+  const met = aktifMetraj(k.no);
   // Aktif kuyuda mevcut metraj, tamamlananında planlanan derinlik
   const derinlikGoster = isAktif ? (met > 0 ? met : (k.der||0)) : (k.der||0);
   const bitisKotu = hesapBitisKotu(k.z, k.eg, derinlikGoster);
@@ -1445,9 +1422,16 @@ function autoSaha(){
 }
 
 // ── KUYU MODAL ──────────────────────────────────────────────
+function removeKuyuGuncelField(){
+  const el = document.getElementById('k-guncel');
+  const wrap = el ? el.closest('.ff') : null;
+  if(wrap) wrap.remove();
+}
+
 function openKuyu(){
   editKId = null;
   document.getElementById('m-kuyu-title').textContent = 'Yeni Kuyu Ekle';
+  removeKuyuGuncelField();
   ['k-no','k-az','k-eg','k-der','k-cap','k-y','k-x','k-z','k-mev','k-saha','k-su','k-bar'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
@@ -1458,6 +1442,7 @@ function openKuyu(){
 
 function editKuyu(id){
   const k = db.kuyular.find(x=>x.id===id); if(!k) return;
+  removeKuyuGuncelField();
   editKId = id;
   document.getElementById('m-kuyu-title').textContent = 'Kuyu Düzenle · '+k.no;
   document.getElementById('k-no').value   = k.no||'';
@@ -3847,7 +3832,7 @@ function renderSondajAnim() {
     grid.innerHTML = '';
     MAKINELER.forEach(makine => {
       const temaRenk = MAKINE_RENKLER_V2[makine] || '#64748b';
-      const rigRenk = '#e2c870';
+      const rigRenk = temaRenk;
 
       // Filtre duyarlı kuyu: bugünün ayıysa gerçek aktif, geçmiş/gelecek aydaysa
       // o dönemde delinen son kuyu — ayMakineAktifKuyu() zaten bunu yapıyor
@@ -3861,20 +3846,27 @@ function renderSondajAnim() {
       let kuyuNo = null, hedef = 0, derinlik = 0;
       if (donemKuyu) {
         kuyuNo = donemKuyu.no || null;
-        hedef = parseFloat(donemKuyu.hd) || parseFloat(donemKuyu.der) || 0;
+        hedef = parseFloat(donemKuyu.hd) || 0;
 
         if (bugunAyMi()) {
           // Bugünün ayı: gerçek kümülatif derinlik (tüm zamanlar)
           const basDerinlik = parseFloat(donemKuyu.bm) || 0;
-          const { bit } = zamanFiltreTarihler();
-          const tumDelgi = kuyuMetrajAt(kuyuNo, bit);
+          const tumDelgi = db.gunluk
+            ? db.gunluk.filter(r => makineEslesir(r.makine, makine) && kuyuNolariFromSondaj(r.sondaj).includes(kuyuNo))
+                .reduce((s,r) => s+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0), 0)
+            : 0;
           derinlik = basDerinlik + tumDelgi;
         } else {
           // Geçmiş ay: o ayın sonundaki toplam derinlik
           // = başlangıç + o aya kadar olan tüm delgi
           const basDerinlik = parseFloat(donemKuyu.bm) || 0;
-          const { bit } = zamanFiltreTarihler();
-          const donemSonuna = kuyuMetrajAt(kuyuNo, bit);
+          const { bas } = zamanFiltreTarihler();
+          const donemSonuna = db.gunluk
+            ? db.gunluk.filter(r =>
+                makineEslesir(r.makine, makine) && kuyuNolariFromSondaj(r.sondaj).includes(kuyuNo) &&
+                r.tarih && r.tarih <= (bas.substring(0,7) + '-31')
+              ).reduce((s,r) => s+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0), 0)
+            : 0;
           derinlik = basDerinlik + donemSonuna;
         }
         if (!hedef) hedef = derinlik + 50;
