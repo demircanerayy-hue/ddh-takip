@@ -1077,6 +1077,7 @@ function drawPieDurak(){
     'PATLATMA':                 '#b91c1c',
     'DUMAN':                    '#231f20',
     'ELEKTRİK KESİNTİSİ':       '#f47721',
+    'DİĞER':                    '#96999b',
   };
 
   const ayDurak = filtreliDurak();
@@ -2203,7 +2204,7 @@ function renderDurakBolge(){
   }).filter(d=>d.val>0);
 
   // Neden bazlı duraklama
-  const NEDEN_COLORS={'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
+  const NEDEN_COLORS={'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721','DİĞER':'#96999b'};
   const nedenMap={};
   ayDurak.forEach(d=>{ const n=normalizeDuraklamaNedeni(d.neden)||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
   const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#96999b'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
@@ -2773,7 +2774,7 @@ function renderOzetInsights(rows, period){
 function renderOzetDurak(period){
   const wrap = document.getElementById('ozet-durak-wrap');
   if(!wrap) return;
-  const colors = {'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
+  const colors = {'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721','DİĞER':'#96999b'};
   const map = {};
   (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period)).forEach(d => {
     const n = normalizeDuraklamaNedeni(d.neden) || 'DİĞER';
