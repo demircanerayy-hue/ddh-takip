@@ -1582,20 +1582,20 @@ function editDurak(id){
 // ── DURAKLAMALAR ────────────────────────────────────────────
 function renderDurak(){
   const qm = document.getElementById('q-dm').value;
-  const list = db.duraklamalar.filter(d => ayFiltre(d.tarih) && (!qm||d.makine===qm));
+  const list = (db.duraklamalar || []).filter(d => ayFiltre(d.tarih) && (!qm||d.makine===qm));
+  const sortedList = list.slice().sort((a,b) => {
+    const tarih = (a.tarih || '').localeCompare(b.tarih || '');
+    if(tarih) return tarih;
+    const vardiya = (parseInt(a.vardiya,10) || 0) - (parseInt(b.vardiya,10) || 0);
+    if(vardiya) return vardiya;
+    return (a.basSaat || a.bas_saat || '').localeCompare(b.basSaat || b.bas_saat || '');
+  });
   const topDk = list.reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
   document.getElementById('dur-dk').textContent = topDk;
   document.getElementById('dur-sa').textContent = (topDk/60).toFixed(2);
   document.getElementById('dur-say').textContent = list.length;
 
-  document.getElementById('dur-tbody').innerHTML = list.length
-    ? list.slice().sort((a,b) => {
-        const tarih = (a.tarih || '').localeCompare(b.tarih || '');
-        if(tarih) return tarih;
-        const vardiya = (parseInt(a.vardiya,10) || 0) - (parseInt(b.vardiya,10) || 0);
-        if(vardiya) return vardiya;
-        return (a.basSaat || a.bas_saat || '').localeCompare(b.basSaat || b.bas_saat || '');
-      }).map(d=>{
+  const rows = sortedList.map(d=>{
         const vc = VRD_CLASS[d.vardiya]||'v1-tag';
         const vl = VRD_LABEL[d.vardiya]||'—';
         const neden = normalizeDuraklamaNedeni(d.neden);
@@ -1614,8 +1614,9 @@ function renderDurak(){
             <button class="btn btn-d" style="padding:3px 7px;font-size:12px;border-radius:6px" title="Sil" onclick="delDurak(${d.id})">🗑</button>
           </td>
         </tr>`;
-      }).join('')
-    : `<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text3)">Kayıt yok</td></tr>`;
+      }).join('');
+
+  document.getElementById('dur-tbody').innerHTML = rows || `<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--text3)">Kayıt yok</td></tr>`;
 }
 
 // ── AUTO SAHA ────────────────────────────────────────────────
