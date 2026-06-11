@@ -1545,7 +1545,13 @@ function renderDurak(){
   document.getElementById('dur-say').textContent = list.length;
 
   document.getElementById('dur-tbody').innerHTML = list.length
-    ? list.slice().sort((a,b)=>a.tarih>b.tarih?-1:1).map(d=>{
+    ? list.slice().sort((a,b) => {
+        const tarih = (a.tarih || '').localeCompare(b.tarih || '');
+        if(tarih) return tarih;
+        const vardiya = (parseInt(a.vardiya,10) || 0) - (parseInt(b.vardiya,10) || 0);
+        if(vardiya) return vardiya;
+        return (a.basSaat || a.bas_saat || '').localeCompare(b.basSaat || b.bas_saat || '');
+      }).map(d=>{
         const vc = VRD_CLASS[d.vardiya]||'v1-tag';
         const vl = VRD_LABEL[d.vardiya]||'—';
         return `<tr>
