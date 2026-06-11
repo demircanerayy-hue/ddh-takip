@@ -329,14 +329,14 @@
   </div>
   <div class="tw"><table>
     <thead><tr>
-      <th style="min-width:110px">Makine</th>
-      <th style="min-width:100px">Tarih</th>
-      <th style="min-width:105px">Sondaj No</th>
-      <th style="min-width:80px">Vardiya</th>
-      <th style="min-width:160px">Neden</th>
-      <th style="min-width:140px">Lokasyon</th>
-      <th style="min-width:160px">Açıklama</th>
-      <th class="c" style="min-width:90px">Süre (dk)</th>
+      <th style="min-width:110px;cursor:pointer;user-select:none" onclick="sortDurak('makine')">Makine<span class="sort-ind" data-sk="makine"></span></th>
+      <th style="min-width:100px;cursor:pointer;user-select:none" onclick="sortDurak('tarih')">Tarih<span class="sort-ind" data-sk="tarih"></span></th>
+      <th style="min-width:105px;cursor:pointer;user-select:none" onclick="sortDurak('sondaj')">Sondaj No<span class="sort-ind" data-sk="sondaj"></span></th>
+      <th style="min-width:80px;cursor:pointer;user-select:none" onclick="sortDurak('vardiya')">Vardiya<span class="sort-ind" data-sk="vardiya"></span></th>
+      <th style="min-width:160px;cursor:pointer;user-select:none" onclick="sortDurak('neden')">Neden<span class="sort-ind" data-sk="neden"></span></th>
+      <th style="min-width:140px;cursor:pointer;user-select:none" onclick="sortDurak('lokasyon')">Lokasyon<span class="sort-ind" data-sk="lokasyon"></span></th>
+      <th style="min-width:160px;cursor:pointer;user-select:none" onclick="sortDurak('aciklama')">Açıklama<span class="sort-ind" data-sk="aciklama"></span></th>
+      <th class="c" style="min-width:90px;cursor:pointer;user-select:none" onclick="sortDurak('dk')">Süre (dk)<span class="sort-ind" data-sk="dk"></span></th>
       <th style="min-width:50px"></th>
     </tr></thead>
     <tbody id="dur-tbody"></tbody>

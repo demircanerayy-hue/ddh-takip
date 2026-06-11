@@ -1581,10 +1581,34 @@ function editDurak(id){
 }
 
 // ── DURAKLAMALAR ────────────────────────────────────────────
+let durakSort = { key: 'tarih', dir: 'asc' };
+const DURAK_SORT_VAL = {
+  makine:   d => d.makine || '',
+  tarih:    d => d.tarih || '',
+  sondaj:   d => d.sondaj || '',
+  vardiya:  d => parseInt(d.vardiya, 10) || 0,
+  neden:    d => normalizeDuraklamaNedeni(d.neden) || '',
+  lokasyon: d => d.lokasyon || '',
+  aciklama: d => temizDuraklamaAciklama(d.aciklama) || '',
+  dk:       d => parseFloat(d.dk) || 0,
+};
+
+function sortDurak(key){
+  if(durakSort.key === key) durakSort.dir = durakSort.dir === 'asc' ? 'desc' : 'asc';
+  else { durakSort.key = key; durakSort.dir = 'asc'; }
+  renderDurak();
+}
+
 function renderDurak(){
   const qm = document.getElementById('q-dm').value;
   const list = (db.duraklamalar || []).filter(d => ayFiltre(d.tarih) && (!qm||d.makine===qm));
+  const dir = durakSort.dir === 'desc' ? -1 : 1;
+  const getVal = DURAK_SORT_VAL[durakSort.key] || DURAK_SORT_VAL.tarih;
   const sortedList = list.slice().sort((a,b) => {
+    const va = getVal(a), vb = getVal(b);
+    let cmp = (typeof va === 'number') ? (va - vb) : String(va).localeCompare(String(vb), 'tr');
+    if(cmp) return cmp * dir;
+    // İkincil: tarih → vardiya → başlangıç saati
     const tarih = (a.tarih || '').localeCompare(b.tarih || '');
     if(tarih) return tarih;
     const vardiya = (parseInt(a.vardiya,10) || 0) - (parseInt(b.vardiya,10) || 0);
@@ -1618,6 +1642,10 @@ function renderDurak(){
       }).join('');
 
   document.getElementById('dur-tbody').innerHTML = rows || `<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--text3)">Kayıt yok</td></tr>`;
+
+  document.querySelectorAll('#page-durak .sort-ind').forEach(el => {
+    el.textContent = el.dataset.sk === durakSort.key ? (durakSort.dir === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
+  });
 }
 
 // ── AUTO SAHA ────────────────────────────────────────────────
@@ -3314,6 +3342,7 @@ window.openDurak    = openDurak;
 window.closeDurak   = closeDurak;
 window.saveDurak    = saveDurak;
 window.delDurak     = delDurak;
+window.sortDurak    = sortDurak;
 window.renderKuyular = renderKuyular;
 window.sortKuyular   = sortKuyular;
 window.exportAy         = exportAy;
