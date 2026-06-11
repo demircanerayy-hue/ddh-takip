@@ -12,6 +12,8 @@ const MAKINE_RENK = {
 const VRD_LABEL = {1:'00:00—08:00', 2:'08:00—16:00', 3:'16:00—00:00'};
 const VRD_CLASS = {1:'v1-tag', 2:'v2-tag', 3:'v3-tag'};
 const VRD_CLR   = {1:'var(--v1b)', 2:'var(--v2b)', 3:'var(--v3b)'};
+const VARDIYA_MAX_METRAJ = {'GS-200':60, 'DBC-U6':60, 'BATUHAN-600X':60, 'GS-600':60, 'BDU-600':60};
+const GECMIS_DUZENLEME_KILIT_GUN = 7;
 
 // ── VERİ ────────────────────────────────────────────────────
 const SK = 'ddh2_v1';
@@ -612,6 +614,142 @@ function bugunAyMi(){
 
 function makineEslesir(a, b){
   return makineKey(a) === makineKey(b);
+}
+
+function bugunStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function tarihGunFarki(tarih){
+  if(!tarih) return 0;
+  const t = new Date(tarih+'T00:00:00');
+  const b = new Date(bugunStr()+'T00:00:00');
+  return Math.floor((b - t) / 86400000);
+}
+
+function isGelecekTarih(tarih){
+  return !!tarih && tarih > bugunStr();
+}
+
+function sondajParcalari(sondaj){
+  return String(sondaj || '').split('/').map(s=>s.trim()).filter(Boolean);
+}
+
+function normalizeKuyuNo(no){
+  return String(no || '').trim().toLocaleUpperCase('tr-TR');
+}
+
+function ayniKuyu(a, b){
+  return normalizeKuyuNo(a) === normalizeKuyuNo(b);
+}
+
+function kuyuBul(no, makine){
+  const n = normalizeKuyuNo(no);
+  return (db.kuyular || []).find(k => normalizeKuyuNo(k.no) === n && (!makine || makineEslesir(k.makine, makine)))
+    || (db.kuyular || []).find(k => normalizeKuyuNo(k.no) === n);
+}
+
+function kuyuLokasyon(k){
+  return k ? (k.mevkii || k.Lokasyon || k.lokasyon || k.saha || '') : '';
+}
+
+function setVardiyaLokasyonFromKuyu(){
+  const sondajEl = document.getElementById('v-sondaj');
+  const lokEl = document.getElementById('v-lok');
+  if(!sondajEl || !lokEl) return;
+  const kuyular = sondajParcalari(sondajEl.value).map(no => kuyuBul(no, varMakine)).filter(Boolean);
+  const loklar = [...new Set(kuyular.map(kuyuLokasyon).filter(Boolean))];
+  if(loklar.length) lokEl.value = loklar.join(' / ');
+}
+
+function vardiyaDegerleri(){
+  return [1,2,3].map(n => {
+    const el = document.getElementById('v-s'+n);
+    const raw = el ? String(el.value || '').trim() : '';
+    const val = raw === '' ? null : parseFloat(raw);
+    return {n, raw, val};
+  });
+}
+
+function rowVardiyaDolu(row, n){
+  const v = row ? row['s'+n] : null;
+  return v !== null && v !== undefined && v !== '';
+}
+
+function rowKuyular(row){
+  return sondajParcalari(row?.sondaj);
+}
+
+function validateGecmisDuzenleme(tarih){
+  if(editVarId === null) return true;
+  if(tarihGunFarki(tarih) <= GECMIS_DUZENLEME_KILIT_GUN) return true;
+  if(isAuth && Date.now() < authExpiry) return true;
+  alert(`${GECMIS_DUZENLEME_KILIT_GUN} gunden eski kayitlar sadece yetkili kullanici tarafindan duzenlenebilir.`);
+  return false;
+}
+
+function validateVardiyaKaydi(tarih, sondaj, vals){
+  if(isGelecekTarih(tarih)){ alert('Gelecek tarihli vardiya kaydi girilemez.'); return false; }
+  if(!validateGecmisDuzenleme(tarih)) return false;
+
+  const girilenler = vals.filter(x => x.raw !== '');
+  const negatif = girilenler.find(x => Number.isFinite(x.val) && x.val < 0);
+  if(negatif){ alert(`${negatif.n}. vardiya metraji negatif olamaz.`); return false; }
+  if(girilenler.some(x => !Number.isFinite(x.val))){ alert('Vardiya metrajlari sayisal olmalidir.'); return false; }
+
+  const limit = VARDIYA_MAX_METRAJ[makineKey(varMakine)] || 60;
+  const asimlar = girilenler.filter(x => x.val > limit);
+  if(asimlar.length){
+    const detay = asimlar.map(x => `V${x.n}: ${x.val} m`).join(', ');
+    if(!confirm(`${varMakine} icin tek vardiyada ${limit} m uzeri girildi (${detay}). Emin misiniz?`)) return false;
+  }
+
+  const secilenKuyular = sondajParcalari(sondaj);
+  if(!secilenKuyular.length){ alert('Kuyu secilmeden vardiya kaydi kaydedilemez.'); return false; }
+  for(const no of secilenKuyular){
+    const k = kuyuBul(no, varMakine);
+    if(!k){ alert(`${no} kuyusu ${varMakine} makinesine atanmis kuyu listesinde bulunamadi.`); return false; }
+    if(!makineEslesir(k.makine, varMakine)){ alert(`${no} kuyusu ${k.makine || '-'} makinesine atanmis. ${varMakine} icin kaydedilemez.`); return false; }
+    if(!isAktifKuyu(k)){ alert(`${no} tamamlanmis durumda. Yeni ilerleme girmek icin once kuyuyu yeniden aktif edin.`); return false; }
+  }
+
+  for(const v of girilenler){
+    const cakisanlar = (db.gunluk || []).filter(r =>
+      r.id !== editVarId &&
+      makineEslesir(r.makine, varMakine) &&
+      r.tarih === tarih &&
+      rowVardiyaDolu(r, v.n)
+    );
+    for(const r of cakisanlar){
+      const mevcutKuyular = rowKuyular(r);
+      const ayniKuyuVar = mevcutKuyular.some(m => secilenKuyular.some(s => ayniKuyu(m, s)));
+      if(ayniKuyuVar){ alert(`${varMakine} / ${tarih} / V${v.n} icin ayni kuyuya ait kayit zaten var.`); return false; }
+      alert(`${varMakine} ayni tarih ve V${v.n} vardiyasinda baska bir kuyuda calisiyor: ${mevcutKuyular.join('/') || '-'}`);
+      return false;
+    }
+  }
+  return true;
+}
+
+function saatDakika(s){
+  if(!s) return null;
+  const m = String(s).match(/^(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  return parseInt(m[1],10) * 60 + parseInt(m[2],10);
+}
+
+function duraklamaAraligi(d){
+  const bas = saatDakika(d.basSaat || d.bas_saat);
+  const bit = saatDakika(d.bitSaat || d.bit_saat);
+  if(bas == null || bit == null) return null;
+  return bit <= bas ? {bas, bit: bit + 1440} : {bas, bit};
+}
+
+function araliklarCakisiyor(a, b){
+  if(!a || !b) return false;
+  const adaylar = [b, {bas:b.bas+1440, bit:b.bit+1440}, {bas:b.bas-1440, bit:b.bit-1440}];
+  return adaylar.some(x => a.bas < x.bit && x.bas < a.bit);
 }
 
 function kuyuNolariFromSondaj(sondaj){
@@ -1368,6 +1506,10 @@ function editDurak(id){
   document.getElementById('d-mak').value      = d.makine||'GS-200';
   document.getElementById('d-tarih').value    = d.tarih||'';
   document.getElementById('d-vrd').value      = d.vardiya||1;
+  const basSaatEl = document.getElementById('d-bas-saat');
+  const bitSaatEl = document.getElementById('d-bit-saat');
+  if(basSaatEl) basSaatEl.value = d.basSaat || d.bas_saat || '';
+  if(bitSaatEl) bitSaatEl.value = d.bitSaat || d.bit_saat || '';
   document.getElementById('d-son').value      = d.sondaj||'';
   document.getElementById('d-ned').value      = d.neden||'DİĞER';
   document.getElementById('d-lokasyon').value  = d.lokasyon||'';
@@ -1610,6 +1752,10 @@ function kuyuDegisimSatirlari(tarih, lok, not_){
   const oldVals = [1,2,3].map(n => vardiyaNum('v-old-s'+n));
   const newVals = [1,2,3].map(n => vardiyaNum('v-new-s'+n));
   for(let i=0;i<3;i++){
+    if(oldVals[i] > 0 && newVals[i] > 0){
+      alert(`Ayni makine ayni vardiyada iki farkli kuyuda calisamaz. V${i+1} metrajini tek kuyuya yazin.`);
+      return false;
+    }
     if(Math.abs((oldVals[i] + newVals[i]) - s[i]) > 0.001){
       alert(`Kuyu değişimi dağılımı hatalı. ${i+1}. vardiyada eski+yeni kuyu toplamı vardiya metrajına eşit olmalı.`);
       return false;
@@ -1662,7 +1808,7 @@ function openVar(m){
   document.getElementById('v-tarih').value = new Date().toISOString().split('T')[0];
   // Datalist güncelle
   const dl = document.getElementById('vkl');
-  if(dl) dl.innerHTML = db.kuyular.filter(k=>k.makine===m).map(k=>`<option value="${esc(k.no)}">`).join('');
+  if(dl) dl.innerHTML = db.kuyular.filter(k=>makineEslesir(k.makine,m) && isAktifKuyu(k)).map(k=>`<option value="${esc(k.no)}">`).join('');
   // Aktif kuyuyu otomatik doldur — seçili AYA göre
   const aktifK = ayMakineAktifKuyu(m);
   const sondajNo = aktifK ? aktifK.no : '';
@@ -1674,6 +1820,7 @@ function openVar(m){
   ['v-old-s1','v-old-s2','v-old-s3','v-new-s1','v-new-s2','v-new-s3'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
+  setVardiyaLokasyonFromKuyu();
   updateKuyuDegisimPanel(true);
   document.getElementById('m-var').classList.add('open');
 }
@@ -1715,9 +1862,11 @@ function saveVar(){
   if(!tarih){ alert('Tarih zorunludur.'); return; }
   const sondaj = document.getElementById('v-sondaj').value.trim();
   if(!sondaj){ alert('Sondaj adı zorunludur.'); return; }
-  const s1 = parseFloat(document.getElementById('v-s1').value)||null;
-  const s2 = parseFloat(document.getElementById('v-s2').value)||null;
-  const s3 = parseFloat(document.getElementById('v-s3').value)||null;
+  const vals = vardiyaDegerleri();
+  if(!validateVardiyaKaydi(tarih, sondaj, vals)) return;
+  const s1 = vals[0].raw === '' ? null : vals[0].val;
+  const s2 = vals[1].raw === '' ? null : vals[1].val;
+  const s3 = vals[2].raw === '' ? null : vals[2].val;
   if(!s1 && !s2 && !s3){ alert('En az bir vardiya ilerlemesi girin.'); return; }
 
   // Depth = o günden önceki son depth + bu vardiya toplamı
@@ -1745,7 +1894,9 @@ function saveVar(){
         tarih, sondaj, Lokasyon: lok,
         s1, s2, s3,
         not: not_,
-        toplam: (s1??0)+(s2??0)+(s3??0)
+        toplam: (s1??0)+(s2??0)+(s3??0),
+        basDepth: sonDepth != null ? sonDepth : 0,
+        depth
       };
     }
     editVarId = null;
@@ -1768,7 +1919,8 @@ function saveVar(){
     Lokasyon: lok, sondaj,
     s1, s2, s3,
     toplam: (s1??0)+(s2??0)+(s3??0),
-    depth: null, not: not_
+    basDepth: sonDepth != null ? sonDepth : 0,
+    depth, not: not_
   });
   showToast('Vardiya kaydedildi', `${varMakine} · ${sondaj}`);
 
@@ -1787,12 +1939,36 @@ function delGunluk(id){
 function openDurak(){
   editDurakId=null;
   document.getElementById('m-durak').querySelector('.mt2').textContent='Duraklama Ekle';
-  ['d-son','d-dk','d-aciklama','d-lokasyon'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['d-son','d-dk','d-aciklama','d-lokasyon','d-bas-saat','d-bit-saat'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('d-tarih').value = new Date().toISOString().split('T')[0];
   document.getElementById('m-durak').classList.add('open');
 }
 
 function closeDurak(){ document.getElementById('m-durak').classList.remove('open'); editDurakId=null; }
+
+function validateDuraklamaKaydi(data){
+  if(!data.tarih){ alert('Tarih zorunludur.'); return false; }
+  if(isGelecekTarih(data.tarih)){ alert('Gelecek tarihli duraklama kaydi girilemez.'); return false; }
+  const yeniAralik = duraklamaAraligi(data);
+  if((data.basSaat || data.bitSaat) && !yeniAralik){
+    alert('Duraklama baslangic ve bitis saatini HH:MM formatinda girin.');
+    return false;
+  }
+  if(yeniAralik){
+    const cakisan = (db.duraklamalar || []).find(d =>
+      d.id !== editDurakId &&
+      makineEslesir(d.makine, data.makine) &&
+      d.tarih === data.tarih &&
+      parseInt(d.vardiya,10) === parseInt(data.vardiya,10) &&
+      araliklarCakisiyor(yeniAralik, duraklamaAraligi(d))
+    );
+    if(cakisan){
+      alert(`Ayni vardiyada cakisan duraklama var: ${cakisan.basSaat || '-'}-${cakisan.bitSaat || '-'}`);
+      return false;
+    }
+  }
+  return true;
+}
 
 function saveDurak(){
   const dk = parseFloat(document.getElementById('d-dk').value)||0;
@@ -1801,12 +1977,15 @@ function saveDurak(){
     makine:   document.getElementById('d-mak').value,
     tarih:    document.getElementById('d-tarih').value,
     vardiya:  parseInt(document.getElementById('d-vrd').value),
+    basSaat:  document.getElementById('d-bas-saat')?.value || '',
+    bitSaat:  document.getElementById('d-bit-saat')?.value || '',
     sondaj:   document.getElementById('d-son').value.trim(),
     neden:    document.getElementById('d-ned').value,
     lokasyon:  document.getElementById('d-lokasyon').value.trim(),
     aciklama: document.getElementById('d-aciklama').value.trim(),
     dk
   };
+  if(!validateDuraklamaKaydi(durakData)) return;
   if(editDurakId !== null){
     const idx = db.duraklamalar.findIndex(d=>d.id===editDurakId);
     if(idx !== -1) db.duraklamalar[idx] = {...db.duraklamalar[idx], ...durakData};
@@ -3055,6 +3234,7 @@ window.delKuyu      = delKuyu;
 window.openVar      = openVar;
 window.closeVar     = closeVar;
 window.saveVar      = saveVar;
+window.setVardiyaLokasyonFromKuyu = setVardiyaLokasyonFromKuyu;
 window.updateKuyuDegisimPanel = updateKuyuDegisimPanel;
 window.applyKuyuDegisimDagitim = applyKuyuDegisimDagitim;
 window.updateKuyuDegisimTotals = updateKuyuDegisimTotals;
