@@ -361,7 +361,7 @@ function normalizeDuraklamaNedeni(neden){
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[?]/g, 'I');
   if(ascii.includes('SU KES')) return 'SU KESİNTİSİ';
-  if(ascii.includes('SU SEVIYES') || ascii.includes('SU YUKSEL')) return 'SU SEVİYESİ YÜKSELMESİ';
+  if(ascii.includes('SU SEV') || ascii.includes('YUKSEL') || ascii.includes('YIKSEL')) return 'SU SEVİYESİ YÜKSELMESİ';
   if(ascii.includes('PATLAT')) return 'PATLATMA';
   if(ascii.includes('DUMAN')) return 'DUMAN';
   if(ascii.includes('ELEK')) return 'ELEKTRİK KESİNTİSİ';
@@ -1076,7 +1076,7 @@ function drawPieDurak(){
 
   const nedenMap = {};
   ayDurak.forEach(d => {
-    const n = d.neden || 'DİĞER';
+    const n = normalizeDuraklamaNedeni(d.neden) || 'DİĞER';
     nedenMap[n] = (nedenMap[n] || 0) + (parseFloat(d.dk) || 0);
   });
 
@@ -1110,6 +1110,7 @@ function drawPieDurak(){
     } else {
       tb.innerHTML = data.map(d => {
         const say = ayDurak.filter(r => (r.neden||'DİĞER') === d.label).length;
+        const neden = normalizeDuraklamaNedeni(d.neden);
         return `<tr>
           <td><span style="display:inline-flex;align-items:center;gap:8px">
             <span style="width:8px;height:8px;border-radius:50%;background:${d.color};display:inline-block;flex-shrink:0"></span>
@@ -1595,7 +1596,7 @@ function renderDurak(){
           <td><span class="dv">${fmtDate(d.tarih)}</span></td>
           <td><span class="kn" style="font-size:11px">${esc(d.sondaj||'—')}</span></td>
           <td><span class="${vc}">${vl}</span></td>
-          <td>${esc(d.neden||'—')}</td>
+          <td>${esc(neden||'—')}</td>
           <td style="color:var(--text2);font-size:11px">${esc(d.lokasyon||'—')}</td>
           <td style="color:var(--text2);font-size:11px">${esc(d.aciklama||'—')}</td>
           <td class="c"><span class="nv gold">${d.dk||0}</span></td>
@@ -2194,7 +2195,7 @@ function renderDurakBolge(){
   // Neden bazlı duraklama
   const NEDEN_COLORS={'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
   const nedenMap={};
-  ayDurak.forEach(d=>{ const n=d.neden||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
+  ayDurak.forEach(d=>{ const n=normalizeDuraklamaNedeni(d.neden)||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
   const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#96999b'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
 
   function makeSvgBar(data, title, W=380){
@@ -2748,7 +2749,7 @@ function renderOzetInsights(rows, period){
   const byDurak = rows.slice().sort((a,b)=>b.durak-a.durak)[0];
   const ayDurak = (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period));
   const nedenMap = {};
-  ayDurak.forEach(d => { const n = d.neden || 'DİĞER'; nedenMap[n] = (nedenMap[n] || 0) + (parseFloat(d.dk)||0); });
+  ayDurak.forEach(d => { const n = normalizeDuraklamaNedeni(d.neden) || 'DİĞER'; nedenMap[n] = (nedenMap[n] || 0) + (parseFloat(d.dk)||0); });
   const kritik = Object.entries(nedenMap).sort((a,b)=>b[1]-a[1])[0];
   const items = [
     ['En yüksek metraj', byMetraj && byMetraj.metraj ? `${byMetraj.m} · ${ozetFmt(byMetraj.metraj,1)} m` : 'Veri yok', 'Seçili dönemde toplam delgi lideri'],
@@ -2765,7 +2766,7 @@ function renderOzetDurak(period){
   const colors = {'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
   const map = {};
   (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period)).forEach(d => {
-    const n = d.neden || 'DİĞER';
+    const n = normalizeDuraklamaNedeni(d.neden) || 'DİĞER';
     map[n] = (map[n] || 0) + (parseFloat(d.dk)||0);
   });
   const data = Object.entries(map).map(([label,val]) => ({label, val, color:colors[label] || '#96999b'})).sort((a,b)=>b.val-a.val);
