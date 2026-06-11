@@ -371,7 +371,7 @@ function normalizeDuraklamaNedeni(neden){
 function normalizeDuraklamaNedenleri(){
   const seen = new Set();
   db.duraklamalar = (db.duraklamalar || [])
-    .map(d => ({...d, neden: normalizeDuraklamaNedeni(d.neden)}))
+    .map(d => ({...d, neden: normalizeDuraklamaNedeni(d.neden), aciklama: temizDuraklamaAciklama(d.aciklama)}))
     .filter(d => {
       const key = [
         d.makine || '',
@@ -387,6 +387,13 @@ function normalizeDuraklamaNedenleri(){
       seen.add(key);
       return true;
     });
+}
+
+function temizDuraklamaAciklama(aciklama){
+  const raw = String(aciklama || '').trim();
+  if(!raw) return '';
+  if(raw.startsWith('Kaynak:')) return '';
+  return raw;
 }
 
 function applySavedData(data){
@@ -1567,7 +1574,7 @@ function editDurak(id){
   document.getElementById('d-son').value      = d.sondaj||'';
   document.getElementById('d-ned').value      = d.neden||'DİĞER';
   document.getElementById('d-lokasyon').value  = d.lokasyon||'';
-  document.getElementById('d-aciklama').value = d.aciklama||'';
+  document.getElementById('d-aciklama').value = temizDuraklamaAciklama(d.aciklama);
   document.getElementById('d-dk').value       = d.dk||'';
   document.getElementById('m-durak').classList.add('open');
 }
@@ -1591,6 +1598,8 @@ function renderDurak(){
       }).map(d=>{
         const vc = VRD_CLASS[d.vardiya]||'v1-tag';
         const vl = VRD_LABEL[d.vardiya]||'—';
+        const neden = normalizeDuraklamaNedeni(d.neden);
+        const aciklama = temizDuraklamaAciklama(d.aciklama);
         return `<tr>
           <td><span class="mt">${esc(d.makine)}</span></td>
           <td><span class="dv">${fmtDate(d.tarih)}</span></td>
@@ -1598,7 +1607,7 @@ function renderDurak(){
           <td><span class="${vc}">${vl}</span></td>
           <td>${esc(neden||'—')}</td>
           <td style="color:var(--text2);font-size:11px">${esc(d.lokasyon||'—')}</td>
-          <td style="color:var(--text2);font-size:11px">${esc(d.aciklama||'—')}</td>
+          <td style="color:var(--text2);font-size:11px">${esc(aciklama||'—')}</td>
           <td class="c"><span class="nv gold">${d.dk||0}</span></td>
           <td style="white-space:nowrap">
             <button class="btn" style="padding:3px 7px;font-size:12px;background:none;border:1px solid var(--border2);border-radius:6px;cursor:pointer;margin-right:3px" title="Düzenle" onclick="editDurak(${d.id})">✏️</button>
@@ -3077,7 +3086,7 @@ function exportAylikRapor(){
   });
   csv += `\nDURAKLAMALAR\nMakine,Tarih,Sondaj No,Neden,Açıklama,Süre (dk)\n`;
   ayDurak.sort((a,b)=>a.tarih>b.tarih?1:-1).forEach(d => {
-    csv += `${d.makine},${d.tarih},"${d.sondaj||''}","${d.neden||''}","${d.aciklama||''}",${d.dk||0}\n`;
+    csv += `${d.makine},${d.tarih},"${d.sondaj||''}","${d.neden||''}","${temizDuraklamaAciklama(d.aciklama)}",${d.dk||0}\n`;
   });
   indir(csv, `Aylik_Rapor_${aktifAy}.csv`);
 }
