@@ -353,6 +353,42 @@ function mergePreloadedDuraklamalar(savedDuraklamalar){
   return [...eksik, ...saved];
 }
 
+function normalizeDuraklamaNedeni(neden){
+  const raw = String(neden || '').trim();
+  const ascii = raw
+    .toLocaleUpperCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[?]/g, 'I');
+  if(ascii.includes('SU KES')) return 'SU KESİNTİSİ';
+  if(ascii.includes('SU SEVIYES') || ascii.includes('SU YUKSEL')) return 'SU SEVİYESİ YÜKSELMESİ';
+  if(ascii.includes('PATLAT')) return 'PATLATMA';
+  if(ascii.includes('DUMAN')) return 'DUMAN';
+  if(ascii.includes('ELEK')) return 'ELEKTRİK KESİNTİSİ';
+  return raw;
+}
+
+function normalizeDuraklamaNedenleri(){
+  const seen = new Set();
+  db.duraklamalar = (db.duraklamalar || [])
+    .map(d => ({...d, neden: normalizeDuraklamaNedeni(d.neden)}))
+    .filter(d => {
+      const key = [
+        d.makine || '',
+        d.tarih || '',
+        String(d.vardiya || ''),
+        d.sondaj || '',
+        d.neden || '',
+        d.basSaat || d.bas_saat || '',
+        d.bitSaat || d.bit_saat || '',
+        String(parseFloat(d.dk) || 0)
+      ].join('|');
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function applySavedData(data){
   if(!data) return false;
   const fbGunluk = data.gunluk || [];
@@ -365,6 +401,7 @@ function applySavedData(data){
   }
   normalizeDbMakineAdlari();
   db.duraklamalar = mergePreloadedDuraklamalar(data.duraklamalar);
+  normalizeDuraklamaNedenleri();
   normalizeDbMakineAdlari();
   db.butce = data.butce || db.butce || {};
   if(data.nextId && data.nextId > nextId) nextId = data.nextId;
@@ -1032,7 +1069,6 @@ function drawPieDurak(){
     'SU SEVİYESİ YÜKSELMESİ':   '#0d9488',
     'PATLATMA':                 '#b91c1c',
     'DUMAN':                    '#231f20',
-    'ELEKTİRİK KESİNTİSİ':      '#f47721',
     'ELEKTRİK KESİNTİSİ':       '#f47721',
   };
 
@@ -2156,7 +2192,7 @@ function renderDurakBolge(){
   }).filter(d=>d.val>0);
 
   // Neden bazlı duraklama
-  const NEDEN_COLORS={'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTİRİK KESİNTİSİ':'#f47721','ELEKTRİK KESİNTİSİ':'#f47721'};
+  const NEDEN_COLORS={'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
   const nedenMap={};
   ayDurak.forEach(d=>{ const n=d.neden||'DİĞER'; nedenMap[n]=(nedenMap[n]||0)+(parseFloat(d.dk)||0); });
   const nedenData = Object.entries(nedenMap).map(([n,dk])=>({label:n,val:dk,color:NEDEN_COLORS[n]||'#96999b'})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val);
@@ -2726,7 +2762,7 @@ function renderOzetInsights(rows, period){
 function renderOzetDurak(period){
   const wrap = document.getElementById('ozet-durak-wrap');
   if(!wrap) return;
-  const colors = {'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTİRİK KESİNTİSİ':'#f47721','ELEKTRİK KESİNTİSİ':'#f47721'};
+  const colors = {'SU KESİNTİSİ':'#1d4f8f','SU SEVİYESİ YÜKSELMESİ':'#0d9488','PATLATMA':'#b91c1c','DUMAN':'#231f20','ELEKTRİK KESİNTİSİ':'#f47721'};
   const map = {};
   (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period)).forEach(d => {
     const n = d.neden || 'DİĞER';
