@@ -868,10 +868,11 @@ function ayMakineDedigiKuyular(makine){
   return liste;
 }
 
-// Aktif kuyu — mevcut ayda gerçek aktif, geçmiş ayda son delinen
+// Aktif kuyu — mevcut ayda gerçek aktif (yoksa atanmış kuyu yok), geçmiş ayda son delinen
 function ayMakineAktifKuyu(makine){
   if(bugunAyMi()){
-    return db.kuyular.find(k => makineEslesir(k.makine, makine) && isAktifKuyu(k)) || sonGunlukKuyu(makine);
+    // Bu ay: yalnızca gerçekten aktif (tamamlanmamış) kuyu. Tamamlandıysa atanmış kuyu gösterme.
+    return db.kuyular.find(k => makineEslesir(k.makine, makine) && isAktifKuyu(k)) || null;
   }
   return sonGunlukKuyu(makine);
 }
