@@ -850,7 +850,8 @@ function ddhMakineDurum(makine, donemKuyu){
   const gercekAktif = db.kuyular ? db.kuyular.find(k => makineEslesir(k.makine, makine) && isAktifKuyu(k)) : null;
   if (gercekAktif) return 'aktif';
   if (makineSonDurak(makine)) return 'durak';
-  return seciliAralikGunlukleri(makine).length ? 'aktif' : 'pasif';
+  // Aktif kuyu yoksa (ör. kuyu sonlandırıldıysa) animasyon durur — geçmiş günlük kayıtları "aktif" yapmaz
+  return 'pasif';
 }
 // Seçili ayda o makinenin deldiği TÜM kuyu adları (unique, kronolojik)
 function ayMakineDedigiKuyular(makine){
