@@ -1966,7 +1966,7 @@ function saveVar(){
   const s1 = vals[0].raw === '' ? null : vals[0].val;
   const s2 = vals[1].raw === '' ? null : vals[1].val;
   const s3 = vals[2].raw === '' ? null : vals[2].val;
-  if(!s1 && !s2 && !s3){ alert('En az bir vardiya ilerlemesi girin.'); return; }
+  if(s1 === null && s2 === null && s3 === null){ alert('En az bir vardiya ilerlemesi girin.'); return; }
 
   // Depth = o günden önceki son depth + bu vardiya toplamı
   const gunlukToplam = (s1||0)+(s2||0)+(s3||0);
