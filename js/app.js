@@ -397,13 +397,15 @@ function temizDuraklamaAciklama(aciklama){
   return raw;
 }
 
-// Tüm duraklama verisini bir kez silmek için sürüm bayrağı.
-// Firebase'de saklanır → temizlik tüm cihazlarda yalnızca BİR kez çalışır,
-// sonradan import edilen yeni veriyi silmez. (Yeni bir global silme gerekirse artır.)
-const DURAK_RESET_V = 1;
+// Duraklama verisini bir kez seed'e (Excel'den import edilen kayıtlara) sıfırlamak için sürüm bayrağı.
+// Firebase'de saklanır → tüm cihazlarda yalnızca BİR kez çalışır; eski Firebase verisini atıp
+// seed'i kalıcı yazar. (v1: tümünü sil — boş seed. v2: Excel importu seed'e yüklendi.)
+// Yeni bir global sıfırlama/import gerekirse bu sürümü artır.
+const DURAK_RESET_V = 2;
 function applyDurakResetIfNeeded(){
   if((db.durakResetV || 0) >= DURAK_RESET_V) return false;
-  db.duraklamalar = [];
+  // Eski Firebase duraklama verisini at; yalnızca seed'deki (import edilen) kayıtlar kalsın.
+  db.duraklamalar = [...PRELOADED_DURAKLAMALAR];
   db.durakResetV = DURAK_RESET_V;
   return true;
 }
