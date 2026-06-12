@@ -562,7 +562,7 @@
   <div class="mt2">Duraklama Ekle</div>
   <div class="fg">
     <div class="ff"><label class="fl">Makine</label>
-      <select class="fi" id="d-mak">
+      <select class="fi" id="d-mak" onchange="setDurakLokasyonFromKuyu()">
         <option>GS-200</option><option>DBC-U6</option><option>BATUHAN-600X</option><option>GS-600</option><option>BDU-600</option>
       </select>
     </div>
@@ -576,7 +576,7 @@
     </div>
     <div class="ff"><label class="fl">Baslangic Saati</label><input class="fi" type="time" id="d-bas-saat"></div>
     <div class="ff"><label class="fl">Bitis Saati</label><input class="fi" type="time" id="d-bit-saat"></div>
-    <div class="ff"><label class="fl">Sondaj No</label><input class="fi" id="d-son" placeholder="BYA-928"></div>
+    <div class="ff"><label class="fl">Sondaj No</label><input class="fi" id="d-son" placeholder="BYA-928" oninput="setDurakLokasyonFromKuyu()"></div>
     <div class="ff full"><label class="fl">Duraklama Nedeni</label>
       <select class="fi" id="d-ned">
         <option>SU KESİNTİSİ</option>

@@ -740,6 +740,18 @@ function setVardiyaLokasyonFromKuyu(){
   if(loklar.length) lokEl.value = loklar.join(' / ');
 }
 
+// Duraklama formunda: girilen sondaj(lar)a göre lokasyonu ilgili kuyunun mevkii'sinden doldur
+function setDurakLokasyonFromKuyu(){
+  const sonEl = document.getElementById('d-son');
+  const lokEl = document.getElementById('d-lokasyon');
+  const makEl = document.getElementById('d-mak');
+  if(!sonEl || !lokEl) return;
+  const makine = makEl ? makEl.value : '';
+  const kuyular = sondajParcalari(sonEl.value).map(no => kuyuBul(no, makine)).filter(Boolean);
+  const loklar = [...new Set(kuyular.map(kuyuLokasyon).filter(Boolean))];
+  if(loklar.length) lokEl.value = loklar.join(' / ');
+}
+
 function vardiyaDegerleri(){
   return [1,2,3].map(n => {
     const el = document.getElementById('v-s'+n);
@@ -2102,6 +2114,11 @@ function saveDurak(){
     aciklama: document.getElementById('d-aciklama').value.trim(),
     dk
   };
+  // Lokasyon boşsa ilgili kuyunun mevkii'sinden doldur
+  if(!durakData.lokasyon){
+    const kuyular = sondajParcalari(durakData.sondaj).map(no => kuyuBul(no, durakData.makine)).filter(Boolean);
+    durakData.lokasyon = [...new Set(kuyular.map(kuyuLokasyon).filter(Boolean))].join(' / ');
+  }
   if(!validateDuraklamaKaydi(durakData)) return;
   if(editDurakId !== null){
     const idx = db.duraklamalar.findIndex(d=>d.id===editDurakId);
@@ -3352,6 +3369,7 @@ window.openVar      = openVar;
 window.closeVar     = closeVar;
 window.saveVar      = saveVar;
 window.setVardiyaLokasyonFromKuyu = setVardiyaLokasyonFromKuyu;
+window.setDurakLokasyonFromKuyu = setDurakLokasyonFromKuyu;
 window.updateKuyuDegisimPanel = updateKuyuDegisimPanel;
 window.applyKuyuDegisimDagitim = applyKuyuDegisimDagitim;
 window.updateKuyuDegisimTotals = updateKuyuDegisimTotals;
