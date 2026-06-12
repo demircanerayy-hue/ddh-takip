@@ -1335,8 +1335,8 @@ function renderKuyular(){
 function kuyuRow(k){
   const isAktif = isAktifKuyu(k);
   const met = aktifMetraj(k.no);
-  // Aktif kuyuda mevcut metraj, tamamlananında planlanan derinlik
-  const derinlikGoster = isAktif ? (met > 0 ? met : (k.der||0)) : (k.der||0);
+  // Hem aktif hem tamamlanan kuyuda fiili delgi metrajı; delgi yoksa plan derinliğe düş
+  const derinlikGoster = met > 0 ? met : (k.der||0);
   const bitisKotu = hesapBitisKotu(k.z, k.eg, derinlikGoster);
   const bitisKotuGoster = bitisKotu ? parseFloat(bitisKotu).toFixed(2) : '—';
   const pct = k.der > 0 ? Math.min(100, Math.round(met/k.der*100)) : 0;
@@ -1354,7 +1354,7 @@ function kuyuRow(k){
     <td class="nv">${k.eg!=null ? parseFloat(k.eg).toFixed(2) : '—'}</td>
     <td>
       <div class="mbar">
-        <span class="mbar-txt" style="color:var(--text)">${isAktif ? met.toFixed(2)+' m (aktif)' : (k.der!=null ? parseFloat(k.der).toFixed(2)+' m' : '—')}</span>
+        <span class="mbar-txt" style="color:var(--text)">${isAktif ? met.toFixed(2)+' m (aktif)' : (met > 0 ? met.toFixed(2)+' m' : (k.der!=null ? parseFloat(k.der).toFixed(2)+' m' : '—'))}</span>
         ${isAktif && k.der > 0 ? `<div class="mbar-bg"><div class="mbar-fg" style="width:${pct}%;background:${pc}"></div></div><span class="mbar-txt">${pct}% · plan ${k.der!=null ? parseFloat(k.der).toFixed(2) : '—'} m</span>` : '' }
       </div>
     </td>
