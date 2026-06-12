@@ -306,6 +306,7 @@ function firebasePayload(){
     kuyular_updates,
     nextId,
     butce:           db.butce || {},
+    durakResetV:     db.durakResetV || 0,
     at: new Date().toISOString()
   };
 }
@@ -396,6 +397,17 @@ function temizDuraklamaAciklama(aciklama){
   return raw;
 }
 
+// Tüm duraklama verisini bir kez silmek için sürüm bayrağı.
+// Firebase'de saklanır → temizlik tüm cihazlarda yalnızca BİR kez çalışır,
+// sonradan import edilen yeni veriyi silmez. (Yeni bir global silme gerekirse artır.)
+const DURAK_RESET_V = 1;
+function applyDurakResetIfNeeded(){
+  if((db.durakResetV || 0) >= DURAK_RESET_V) return false;
+  db.duraklamalar = [];
+  db.durakResetV = DURAK_RESET_V;
+  return true;
+}
+
 function applySavedData(data){
   if(!data) return false;
   const fbGunluk = data.gunluk || [];
@@ -411,6 +423,7 @@ function applySavedData(data){
   normalizeDuraklamaNedenleri();
   normalizeDbMakineAdlari();
   db.butce = data.butce || db.butce || {};
+  db.durakResetV = data.durakResetV || 0;
   if(data.nextId && data.nextId > nextId) nextId = data.nextId;
 
   if(Array.isArray(data.kuyular) && data.kuyular.length > 0){
@@ -504,10 +517,11 @@ function load(){
     if(data){
       const chosen = newerData(data, local);
       applySavedData(chosen);
-      saveLocalBackup(chosen);
+      if(applyDurakResetIfNeeded()) save(); else saveLocalBackup(chosen);
     } else {
       if(local){
         applySavedData(local);
+        if(applyDurakResetIfNeeded()) save();
         setStatus(false, '● Yerel yedekten açıldı');
         renderAll();
         return;
