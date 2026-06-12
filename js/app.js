@@ -444,6 +444,7 @@ function applySavedData(data){
     });
   }
   normalizeDbMakineAdlari();
+  backfillDurakLokasyon();
   ensureNextId();
   return true;
 }
@@ -738,6 +739,17 @@ function setVardiyaLokasyonFromKuyu(){
   const kuyular = sondajParcalari(sondajEl.value).map(no => kuyuBul(no, varMakine)).filter(Boolean);
   const loklar = [...new Set(kuyular.map(kuyuLokasyon).filter(Boolean))];
   if(loklar.length) lokEl.value = loklar.join(' / ');
+}
+
+// Yükleme anında: lokasyonu boş olan duraklamaları ilgili kuyunun mevkii'sinden doldur.
+// (Firebase'deki eski lokasyonsuz kayıtlar için de çalışır; db.kuyular set edildikten SONRA çağrılmalı.)
+function backfillDurakLokasyon(){
+  (db.duraklamalar || []).forEach(d => {
+    if(d && !d.lokasyon){
+      const lok = kuyuLokasyon(kuyuBul(d.sondaj, d.makine));
+      if(lok) d.lokasyon = lok;
+    }
+  });
 }
 
 // Duraklama formunda: girilen sondaj(lar)a göre lokasyonu ilgili kuyunun mevkii'sinden doldur
