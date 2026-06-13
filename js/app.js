@@ -1904,8 +1904,10 @@ function kuyuDegisimSatirlari(tarih, lok, not_){
   }
   const oldTop = oldVals.reduce((a,b)=>a+b,0);
   const newTop = newVals.reduce((a,b)=>a+b,0);
-  if(oldTop <= 0 || newTop <= 0){
-    alert('Kuyu değişiminde biten ve başlayan kuyu için en az bir metraj olmalı.');
+  // Biten kuyu o vardiyada 0 metraj olabilir (delgiye başlamadan kuyu bitiş kararı çıkabilir).
+  // Yalnızca toplam dağıtım sıfırsa engelle.
+  if(oldTop + newTop <= 0){
+    alert('Kuyu değişiminde en az bir vardiyada metraj girilmeli.');
     return false;
   }
   const changeNote = `Kuyu değişimi: ${parts[0]} -> ${parts[1]}`;
