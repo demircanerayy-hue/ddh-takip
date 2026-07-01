@@ -1708,3 +1708,24 @@ canvas.ddh-rig-canvas {
 .hakedis-act{height:30px;padding:4px 10px;font-size:11px;font-weight:700;border-radius:7px;}
 .hakedis-detail-wrap{padding:10px;background:var(--bg);border-radius:var(--r2);}
 .hakedis-detail-row > td{padding:0 !important;background:var(--bg);}
+/* USD/TL kur girişi */
+.hakedis-kur-wrap{display:flex;align-items:center;gap:6px;}
+.hakedis-kur-wrap span{font-size:11px;font-weight:900;color:var(--text3);letter-spacing:.5px;}
+.hakedis-kur-wrap .fi{max-width:90px;}
+/* Finansal Hakediş Özeti bloğu */
+.hakedis-finans{display:flex;flex-direction:column;gap:2px;max-width:560px;}
+.hakedis-finans-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--text2);
+}
+.hakedis-finans-row:nth-child(odd){background:var(--bg);}
+.hakedis-finans-row span{color:var(--text2);}
+.hakedis-finans-row b{font-weight:900;color:var(--text);white-space:nowrap;}
+.hakedis-finans-row .fi{max-width:150px;text-align:right;}
+.hakedis-finans-sep{height:1px;background:var(--border);margin:4px 0;}
+.hakedis-finans-total{
+  margin-top:4px;border:1px solid var(--border2);background:var(--bg2);
+  font-size:14px;
+}
+.hakedis-finans-total span{color:var(--text);font-weight:900;}
+.hakedis-finans-total b{color:var(--gold);font-size:16px;}

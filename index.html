@@ -371,6 +371,10 @@
         <option value="">Tüm Durumlar</option>
         <option>Taslak</option><option>Kontrol Bekliyor</option><option>Onaylandı</option><option>Revize İstendi</option><option>Faturaya Aktarıldı</option><option>Ödendi</option>
       </select>
+      <div class="hakedis-kur-wrap">
+        <span>USD/TL</span>
+        <input class="fi" type="text" inputmode="decimal" id="hakedis-kur" placeholder="Kur" oninput="setHakedisKur(this.value)">
+      </div>
     </div>
     <div style="display:flex;justify-content:flex-end;align-items:center">
       <button class="btn btn-exp" onclick="exportHakedis()">↓ Export</button>
@@ -388,6 +392,8 @@
     </div>
     <div id="hakedis-table-wrap"></div>
   </div>
+
+  <div id="hakedis-finans-wrap"></div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
