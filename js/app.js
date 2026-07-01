@@ -2821,7 +2821,7 @@ function hakedisFmtTl(n){
 function hakedisFmtKur(n){
   const v = Number(n);
   if(!isFinite(v) || v <= 0) return '-';
-  return v.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return v.toLocaleString('tr-TR', {minimumFractionDigits:4, maximumFractionDigits:4});
 }
 
 // Bir kuyunun TL kesinti kalemleri
@@ -3685,7 +3685,7 @@ function hakedisDetailCsv(rec){
   csv += `Kuyu İçi Ölçüm Tutarı USD,${Math.round(rec.kuyuIciUsd)}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(rec.kuyuIciUsd * hakedisKur, f.valid)}\n`;
   csv += `Hakediş Tutarı USD,${Math.round(f.hakedisUsd)}\n`;
-  csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(2) : ''}\n`;
+  csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(4) : ''}\n`;
   csv += `Hakediş Tutarı TL,${hakedisCsvTl(f.hakedisTl,f.valid)}\n`;
   csv += `Kesinti (Elektrik) TL,${kes.elektrik.toFixed(2)}\n`;
   csv += `Kesinti (Motorin) TL,${kes.motorin.toFixed(2)}\n`;
@@ -3702,7 +3702,7 @@ function hakedisDetailCsv(rec){
 function hakedisCsvTl(v, valid){ return valid ? (Number(v)||0).toFixed(2) : ''; }
 
 function hakedisSummaryCsv(rows){
-  const kurStr = hakedisKur > 0 ? hakedisKur.toFixed(2) : '';
+  const kurStr = hakedisKur > 0 ? hakedisKur.toFixed(4) : '';
   let csv = `Lokasyon,Kuyu,Makine,Firma/Ekip,Toplam Metraj (m),Delgi Tutarı USD,Duraklama/Bekleme USD,Kuyu İçi Ölçüm Metrajı (m),Kuyu İçi Ölçüm Birim Fiyatı USD,Kuyu İçi Ölçüm Tutarı USD,Kuyu İçi Ölçüm Tutarı TL,Hakediş Tutarı USD,Dolar Kuru,Hakediş Tutarı TL,Kesinti (Elektrik) TL,Kesinti (Motorin) TL,Kesinti (Servis) TL,Toplam Kesinti TL,Net Hakediş TL,KDV (%20) TL,Tevkifat 4/10 TL,Tevkifatlı KDV TL,Net Ödenecek TL,Hakediş Durumu\n`;
   rows.forEach(r => {
     const f = hakedisFinansForRec(r);
@@ -3757,7 +3757,7 @@ function exportHakedis(){
     csv += `Toplam Kuyu İçi Ölçüm Tutarı USD,${Math.round(kioUsdT)}\n`;
     csv += `Toplam Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(kioUsdT*hakedisKur,gf.valid)}\n`;
     csv += `Hakediş Tutarı USD,${Math.round(gf.hakedisUsd)}\n`;
-    csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(2) : ''}\n`;
+    csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(4) : ''}\n`;
     csv += `Hakediş Tutarı TL,${hakedisCsvTl(gf.hakedisTl,gf.valid)}\n`;
     csv += `Kesinti (Elektrik) TL,${gk.elektrik.toFixed(2)}\n`;
     csv += `Kesinti (Motorin) TL,${gk.motorin.toFixed(2)}\n`;
