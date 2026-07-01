@@ -3236,6 +3236,8 @@ function hakedisKpiCards(items){
 
 function renderHakedisKpisAll(rows){
   const brutUsd = rows.reduce((s,r)=>s+r.brut,0);
+  const durakMinToplam = rows.reduce((s,r)=>s+(r.durakMin||0),0);
+  const waitingToplam = rows.reduce((s,r)=>s+(r.waiting||0),0);
   const f = hakedisFinansForRows(rows);
   const tl = (v)=> f.valid ? hakedisFmtTl(v) : '-';
   const note = f.valid ? '' : 'Kur giriniz';
@@ -3243,6 +3245,7 @@ function renderHakedisKpisAll(rows){
     ['Toplam Hakediş USD', opexFmtUsd(brutUsd), '', `${rows.length} kuyu`, 'var(--gold)'],
     ['Dolar Kuru', hakedisFmtKur(hakedisKur), 'USD/TL', hakedisKur > 0 ? 'manuel' : 'girilmedi', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat × $${OPEX_WAIT_USD_PER_HOUR}/sa`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
     ['Net Ödenecek Tutar TL', tl(f.netOdenecekTl), '', note || 'Net + KDV − tevkifat', 'var(--green)']
@@ -3497,11 +3500,14 @@ function hakedisDetailTableHtml(rec){
 
 function renderHakedisKpisMulti(rows){
   const f = hakedisFinansForRowsGroup(rows);
+  const durakMinToplam = rows.reduce((s,r)=>s+(r.durakMin||0),0);
+  const waitingToplam = rows.reduce((s,r)=>s+(r.waiting||0),0);
   const tl = (v)=> f.valid ? hakedisFmtTl(v) : '-';
   const note = f.valid ? '' : 'Kur giriniz';
   hakedisKpiCards([
     ['Seçili Kuyu Sayısı', ozetFmt(rows.length,0), 'kuyu', 'Çoklu seçim', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat × $${OPEX_WAIT_USD_PER_HOUR}/sa`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş Tutarı TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
     ['KDV (%20) TL', tl(f.kdvTl), '', note || 'Net × 0,20', 'var(--purple)'],
