@@ -3098,7 +3098,9 @@ function renderHakedisSummaryTable(rows){
     wrap.innerHTML = '<div class="ozet-empty">Hakediş hesaplanacak kuyu verisi bulunamadı.</div>';
     return;
   }
-  const body = rows.map(r => `<tr>
+  const body = rows.map(r => {
+    const acts = hakedisActionButtons(r.no, r.durum);
+    return `<tr>
     <td>${esc(r.no)}</td>
     <td>${esc(r.makine)}</td>
     <td>${esc(r.firma)}</td>
@@ -3112,7 +3114,9 @@ function renderHakedisSummaryTable(rows){
     <td class="c">${opexFmtUsd(r.brut)}</td>
     <td class="c">${opexFmtUsd(r.net)}</td>
     <td>${hakedisBadge(r.durum)}</td>
-  </tr>`).join('');
+    <td>${acts ? `<div class="hakedis-acts">${acts}</div>` : '<span style="font-size:11px;color:var(--text3);font-weight:700">—</span>'}</td>
+  </tr>`;
+  }).join('');
   const t = {
     metraj: rows.reduce((s,r)=>s+r.metraj,0),
     drilling: rows.reduce((s,r)=>s+r.drilling,0),
@@ -3136,6 +3140,7 @@ function renderHakedisSummaryTable(rows){
       <th class="c" style="min-width:110px">Brüt Hakediş</th>
       <th class="c" style="min-width:110px">Net Hakediş</th>
       <th style="min-width:110px">Durum</th>
+      <th style="min-width:180px">İşlem</th>
     </tr></thead>
     <tbody>${body}</tbody>
     <tfoot><tr style="font-weight:900;border-top:2px solid var(--border2)">
@@ -3146,6 +3151,7 @@ function renderHakedisSummaryTable(rows){
       <td class="c">${opexFmtUsd(t.kesinti)}</td>
       <td class="c">${opexFmtUsd(t.brut)}</td>
       <td class="c">${opexFmtUsd(t.net)}</td>
+      <td></td>
       <td></td>
     </tr></tfoot>
   </table></div>`;
