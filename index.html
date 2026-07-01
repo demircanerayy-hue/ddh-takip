@@ -355,10 +355,21 @@
       <div class="ozet-sub">Kuyu bazlı delgi, bekleme, kesinti ve net hakediş hesapları</div>
     </div>
     <div class="ozet-filter-controls">
-      <select class="fi" id="hakedis-kuyu-sec" onchange="setHakedisKuyu(this.value)"></select>
+      <select class="fi" id="hakedis-loc-sec" onchange="setHakedisLocation(this.value)">
+        <option value="">Tüm Lokasyonlar</option>
+        <option>Bolkar 1</option><option>Bolkar 2</option><option>B1</option><option>Tanımsız</option>
+      </select>
+      <div class="hakedis-ms" id="hakedis-kuyu-ms">
+        <button type="button" class="fi hakedis-ms-btn" id="hakedis-kuyu-btn" onclick="toggleHakedisKuyuMenu(event)">Tüm Kuyular</button>
+        <div class="hakedis-ms-menu" id="hakedis-kuyu-menu"></div>
+      </div>
       <select class="fi" id="hakedis-mak-sec" onchange="renderHakedis()">
         <option value="">Tüm Makineler</option>
         <option>GS-200</option><option>DBC-U6</option><option>BATUHAN-600X</option><option>GS-600</option><option>BDU-600</option>
+      </select>
+      <select class="fi" id="hakedis-durum-sec" onchange="renderHakedis()">
+        <option value="">Tüm Durumlar</option>
+        <option>Taslak</option><option>Kontrol Bekliyor</option><option>Onaylandı</option><option>Revize İstendi</option><option>Faturaya Aktarıldı</option><option>Ödendi</option>
       </select>
     </div>
     <div style="display:flex;justify-content:flex-end;align-items:center">
