@@ -2011,7 +2011,7 @@ function openVar(m){
   document.getElementById('v-tarih').value = new Date().toISOString().split('T')[0];
   // Datalist güncelle
   const dl = document.getElementById('vkl');
-  if(dl) dl.innerHTML = db.kuyular.filter(k=>makineEslesir(k.makine,m)).map(k=>`<option value="${esc(k.no)}">`).join('');
+  if(dl) dl.innerHTML = db.kuyular.filter(k=>makineEslesir(k.makine,m) && isAktifKuyu(k)).map(k=>`<option value="${esc(k.no)}">`).join('');
   // Aktif kuyuyu otomatik doldur — seçili AYA göre
   const aktifK = ayMakineAktifKuyu(m);
   const sondajNo = aktifK ? aktifK.no : '';
@@ -2907,14 +2907,15 @@ function hakedisFinans(brutUsd, kesintiTl, kur){
   const valid = isFinite(kur) && kur > 0;
   if(!valid){
     return { valid:false, hakedisUsd, kur:0, kesintiTl:kes,
-      hakedisTl:NaN, netHakedisTl:NaN, kdvTl:NaN, tevkifatliKdvTl:NaN, netOdenecekTl:NaN };
+      hakedisTl:NaN, netHakedisTl:NaN, kdvTl:NaN, tevkifatTutariTl:NaN, tevkifatliKdvTl:NaN, netOdenecekTl:NaN };
   }
   const hakedisTl = hakedisUsd * kur;
   const netHakedisTl = hakedisTl - kes;
   const kdvTl = netHakedisTl * HAKEDIS_KDV_ORANI;
-  const tevkifatliKdvTl = kdvTl * HAKEDIS_TEVKIFAT_ORANI;
-  const netOdenecekTl = netHakedisTl + kdvTl - tevkifatliKdvTl;
-  return { valid:true, hakedisUsd, kur, kesintiTl:kes, hakedisTl, netHakedisTl, kdvTl, tevkifatliKdvTl, netOdenecekTl };
+  const tevkifatTutariTl = kdvTl * HAKEDIS_TEVKIFAT_ORANI;   // vergi dairesine tevkif edilerek ödenen KDV kısmı
+  const tevkifatliKdvTl = kdvTl - tevkifatTutariTl;          // satıcıya ödenen KDV kısmı (KDV - tevkifat)
+  const netOdenecekTl = netHakedisTl + tevkifatliKdvTl;
+  return { valid:true, hakedisUsd, kur, kesintiTl:kes, hakedisTl, netHakedisTl, kdvTl, tevkifatTutariTl, tevkifatliKdvTl, netOdenecekTl };
 }
 
 function hakedisFinansForRec(rec){
@@ -3616,7 +3617,7 @@ function hakedisFinansBlockHtml(f, opts){
     <div class="hakedis-finans-sep"></div>
     ${hakedisFinansRow('Net Hakediş Tutarı TL', tl(f.netHakedisTl))}
     ${hakedisFinansRow('KDV (%20) TL', tl(f.kdvTl))}
-    ${hakedisFinansRow('Tevkifat 4/10 TL', tl(f.tevkifatliKdvTl))}
+    ${hakedisFinansRow('Tevkifat 4/10 TL', tl(f.tevkifatTutariTl))}
     ${hakedisFinansRow('Tevkifatlı KDV TL', tl(f.tevkifatliKdvTl))}
     ${hakedisFinansRow('Net Ödenecek Tutar TL', tl(f.netOdenecekTl), true)}
   </div>`;
@@ -3755,7 +3756,7 @@ function hakedisDetailCsv(rec){
   csv += `Toplam Kesinti TL,${kes.toplam.toFixed(2)}\n`;
   csv += `Net Hakediş Tutarı TL,${hakedisCsvTl(f.netHakedisTl,f.valid)}\n`;
   csv += `KDV (%20) TL,${hakedisCsvTl(f.kdvTl,f.valid)}\n`;
-  csv += `Tevkifat 4/10 TL,${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)}\n`;
+  csv += `Tevkifat 4/10 TL,${hakedisCsvTl(f.tevkifatTutariTl,f.valid)}\n`;
   csv += `Tevkifatlı KDV TL,${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)}\n`;
   csv += `Net Ödenecek Tutar TL,${hakedisCsvTl(f.netOdenecekTl,f.valid)}\n`;
   return csv;
@@ -3769,7 +3770,7 @@ function hakedisSummaryCsv(rows){
   rows.forEach(r => {
     const f = hakedisFinansForRec(r);
     const kes = hakedisKesintiOf(r.no);
-    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.metraj.toFixed(1)},${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
+    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.metraj.toFixed(1)},${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatTutariTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
   });
   const ft = hakedisFinansForRows(rows);
   const kt = { elektrik:0, motorin:0, servis:0, toplam:0 };
@@ -3780,7 +3781,7 @@ function hakedisSummaryCsv(rows){
   const brutT = rows.reduce((s,r)=>s+r.brut,0);
   const kioMetrajT = rows.reduce((s,r)=>s+(r.kuyuIciMetraj||0),0);
   const kioUsdT = rows.reduce((s,r)=>s+(r.kuyuIciUsd||0),0);
-  csv += `TOPLAM,,,,${metrajT.toFixed(1)},${Math.round(drillT)},${Math.round(waitT)},${kioMetrajT.toFixed(1)},,${Math.round(kioUsdT)},${hakedisCsvTl(kioUsdT*hakedisKur,ft.valid)},${Math.round(brutT)},${kurStr},${hakedisCsvTl(ft.hakedisTl,ft.valid)},${kt.elektrik.toFixed(2)},${kt.motorin.toFixed(2)},${kt.servis.toFixed(2)},${kt.toplam.toFixed(2)},${hakedisCsvTl(ft.netHakedisTl,ft.valid)},${hakedisCsvTl(ft.kdvTl,ft.valid)},${hakedisCsvTl(ft.tevkifatliKdvTl,ft.valid)},${hakedisCsvTl(ft.tevkifatliKdvTl,ft.valid)},${hakedisCsvTl(ft.netOdenecekTl,ft.valid)},\n`;
+  csv += `TOPLAM,,,,${metrajT.toFixed(1)},${Math.round(drillT)},${Math.round(waitT)},${kioMetrajT.toFixed(1)},,${Math.round(kioUsdT)},${hakedisCsvTl(kioUsdT*hakedisKur,ft.valid)},${Math.round(brutT)},${kurStr},${hakedisCsvTl(ft.hakedisTl,ft.valid)},${kt.elektrik.toFixed(2)},${kt.motorin.toFixed(2)},${kt.servis.toFixed(2)},${kt.toplam.toFixed(2)},${hakedisCsvTl(ft.netHakedisTl,ft.valid)},${hakedisCsvTl(ft.kdvTl,ft.valid)},${hakedisCsvTl(ft.tevkifatTutariTl,ft.valid)},${hakedisCsvTl(ft.tevkifatliKdvTl,ft.valid)},${hakedisCsvTl(ft.netOdenecekTl,ft.valid)},\n`;
   return csv;
 }
 
@@ -3827,7 +3828,7 @@ function exportHakedis(){
     csv += `Toplam Kesinti TL,${gk.toplam.toFixed(2)}\n`;
     csv += `Net Hakediş Tutarı TL,${hakedisCsvTl(gf.netHakedisTl,gf.valid)}\n`;
     csv += `KDV (%20) TL,${hakedisCsvTl(gf.kdvTl,gf.valid)}\n`;
-    csv += `Tevkifat 4/10 TL,${hakedisCsvTl(gf.tevkifatliKdvTl,gf.valid)}\n`;
+    csv += `Tevkifat 4/10 TL,${hakedisCsvTl(gf.tevkifatTutariTl,gf.valid)}\n`;
     csv += `Tevkifatlı KDV TL,${hakedisCsvTl(gf.tevkifatliKdvTl,gf.valid)}\n`;
     csv += `Net Ödenecek Tutar TL,${hakedisCsvTl(gf.netOdenecekTl,gf.valid)}\n`;
     rows.forEach(r => { csv += `\nDETAY · ${r.no}\n` + hakedisDetailCsv(r); });
