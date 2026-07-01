@@ -292,8 +292,43 @@ function showToast(title, detail){
 
 const LOCAL_BACKUP_KEY = 'ddh-takip-data-v1';
 
+function cloneKuyu(k){
+  return {...k};
+}
+
+function preloadedKuyuMaxId(){
+  return PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>parseInt(k.id,10) || 0)) : 0;
+}
+
+function mergeSavedKuyular(data){
+  const maxPre = preloadedKuyuMaxId();
+  const merged = PRELOADED_KUYULAR.map(cloneKuyu);
+  const seenIds = new Set(merged.map(k => parseInt(k.id,10) || 0));
+  const addUserKuyular = rows => {
+    (rows || []).forEach(k => {
+      const id = parseInt(k && k.id, 10) || 0;
+      if(id > maxPre && !seenIds.has(id)){
+        merged.push(cloneKuyu(k));
+        seenIds.add(id);
+      }
+    });
+  };
+
+  addUserKuyular(data && data.kuyular_user);
+  addUserKuyular(data && data.kuyular);
+
+  if(data && data.kuyular_updates){
+    data.kuyular_updates.forEach(u => {
+      const id = parseInt(u && u.id, 10) || 0;
+      const k = merged.find(x => (parseInt(x.id,10) || 0) === id);
+      if(k && Object.prototype.hasOwnProperty.call(u, 'bit')) k.bit = u.bit || '';
+    });
+  }
+  return merged;
+}
+
 function firebasePayload(){
-  const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>k.id)) : 0;
+  const maxPre = preloadedKuyuMaxId();
   const kuyular_user = db.kuyular.filter(k => k.id > maxPre);
   const kuyular_updates = db.kuyular
     .filter(k => k.id <= maxPre && k.bit)
@@ -428,21 +463,7 @@ function applySavedData(data){
   db.durakResetV = data.durakResetV || 0;
   if(data.nextId && data.nextId > nextId) nextId = data.nextId;
 
-  if(Array.isArray(data.kuyular) && data.kuyular.length > 0){
-    db.kuyular = data.kuyular;
-  } else {
-    db.kuyular = [...PRELOADED_KUYULAR];
-  }
-  if(!Array.isArray(data.kuyular) && data.kuyular_user && data.kuyular_user.length > 0){
-    const maxPre = PRELOADED_KUYULAR.length > 0 ? Math.max(...PRELOADED_KUYULAR.map(k=>k.id)) : 0;
-    db.kuyular = [...db.kuyular, ...data.kuyular_user.filter(k=>k.id>maxPre)];
-  }
-  if(data.kuyular_updates){
-    data.kuyular_updates.forEach(u => {
-      const k = db.kuyular.find(x=>x.id===u.id);
-      if(k) k.bit = u.bit;
-    });
-  }
+  db.kuyular = mergeSavedKuyular(data);
   normalizeDbMakineAdlari();
   backfillDurakLokasyon();
   ensureNextId();
@@ -506,7 +527,7 @@ function load(){
     applySavedData(local);
     setStatus(false, '● Yerel yedek yüklendi · Firebase bekleniyor');
   } else {
-    db.kuyular = [...PRELOADED_KUYULAR];
+    db.kuyular = PRELOADED_KUYULAR.map(cloneKuyu);
     db.gunluk = [...PRELOADED_GUNLUK];
     db.duraklamalar = db.duraklamalar || [];
     normalizeDbMakineAdlari();
@@ -642,7 +663,7 @@ function aktifMetraj(kuyuNo){
   db.gunluk.forEach(r => {
     // Yeni model: sondaj alanında kuyu adı var
     if(r.sondaj){
-      const sondajlar = r.sondaj.split('/').map(s=>s.trim());
+      const sondajlar = sondajParcalari(r.sondaj);
       if(sondajlar.includes(kuyuNo)){
         toplam += (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0);
       }
@@ -711,11 +732,47 @@ function isGelecekTarih(tarih){
 }
 
 function sondajParcalari(sondaj){
-  return String(sondaj || '').split('/').map(s=>s.trim()).filter(Boolean);
+  let sonPrefix = '';
+  return String(sondaj || '').split('/').map(raw => {
+    const parca = raw.trim();
+    if(!parca) return '';
+    const prefixMatch = parca.match(/^([A-ZÇĞİÖŞÜ]+)-\d+/i);
+    if(prefixMatch){
+      sonPrefix = prefixMatch[1].toLocaleUpperCase('tr-TR');
+      return parca;
+    }
+    if(sonPrefix && /^\d+$/.test(parca)) return `${sonPrefix}-${parca}`;
+    return parca;
+  }).filter(Boolean);
 }
 
 function normalizeKuyuNo(no){
   return String(no || '').trim().toLocaleUpperCase('tr-TR');
+}
+
+const EXCEL_DERINLIK_SON_KUYU = 940;
+function kuyuNoSayisi(no){
+  const m = normalizeKuyuNo(no).match(/^BYA[-\s]?(\d+)$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function excelDerinlikKuyusu(no){
+  const n = kuyuNoSayisi(no);
+  return n !== null && n <= EXCEL_DERINLIK_SON_KUYU;
+}
+
+function kuyuDerinlikMetraj(k){
+  if(!k) return 0;
+  const plan = parseFloat(k.der) || 0;
+  if(excelDerinlikKuyusu(k.no)) return plan;
+  const met = aktifMetraj(k.no);
+  return met > 0 ? met : plan;
+}
+
+function sondajDepthHesaplanir(sondaj){
+  const parts = sondajParcalari(sondaj);
+  const aktifNo = parts.length ? parts[parts.length - 1] : sondaj;
+  return !excelDerinlikKuyusu(aktifNo);
 }
 
 function ayniKuyu(a, b){
@@ -1335,8 +1392,9 @@ function renderKuyular(){
 function kuyuRow(k){
   const isAktif = isAktifKuyu(k);
   const met = aktifMetraj(k.no);
+  const excelSabit = excelDerinlikKuyusu(k.no);
   // Hem aktif hem tamamlanan kuyuda fiili delgi metrajı; delgi yoksa plan derinliğe düş
-  const derinlikGoster = met > 0 ? met : (k.der||0);
+  const derinlikGoster = kuyuDerinlikMetraj(k);
   const bitisKotu = hesapBitisKotu(k.z, k.eg, derinlikGoster);
   const bitisKotuGoster = bitisKotu ? parseFloat(bitisKotu).toFixed(2) : '—';
   const pct = k.der > 0 ? Math.min(100, Math.round(met/k.der*100)) : 0;
@@ -1354,8 +1412,8 @@ function kuyuRow(k){
     <td class="nv">${k.eg!=null ? parseFloat(k.eg).toFixed(2) : '—'}</td>
     <td>
       <div class="mbar">
-        <span class="mbar-txt" style="color:var(--text)">${isAktif ? met.toFixed(2)+' m (aktif)' : (met > 0 ? met.toFixed(2)+' m' : (k.der!=null ? parseFloat(k.der).toFixed(2)+' m' : '—'))}</span>
-        ${isAktif && k.der > 0 ? `<div class="mbar-bg"><div class="mbar-fg" style="width:${pct}%;background:${pc}"></div></div><span class="mbar-txt">${pct}% · plan ${k.der!=null ? parseFloat(k.der).toFixed(2) : '—'} m</span>` : '' }
+        <span class="mbar-txt" style="color:var(--text)">${derinlikGoster > 0 ? derinlikGoster.toFixed(2)+' m' : '—'}</span>
+        ${isAktif && !excelSabit && k.der > 0 ? `<div class="mbar-bg"><div class="mbar-fg" style="width:${pct}%;background:${pc}"></div></div><span class="mbar-txt">${pct}% · plan ${k.der!=null ? parseFloat(k.der).toFixed(2) : '—'} m</span>` : '' }
       </div>
     </td>
 
@@ -1792,11 +1850,13 @@ let vKuyuSay  = 0;
 function sonDepthBul(sondajNo, makine, tarihHaric){
   if(!sondajNo) return null;
   // Kuyu değişimi varsa son kuyuyu al
-  const kuyuNo = sondajNo.includes('/') ? sondajNo.split('/').pop().trim() : sondajNo.trim();
+  const parts = sondajParcalari(sondajNo);
+  const kuyuNo = parts.length ? parts[parts.length - 1] : sondajNo.trim();
+  if(excelDerinlikKuyusu(kuyuNo)) return null;
   const kayitlar = db.gunluk
     .filter(r => r.makine === makine && r.depth != null &&
       (!tarihHaric || r.tarih < tarihHaric) &&
-      (r.sondaj || '').split('/').map(s => s.trim()).includes(kuyuNo))
+      sondajParcalari(r.sondaj).includes(kuyuNo))
     .sort((a, b) => a.tarih > b.tarih ? -1 : 1);
   return kayitlar.length ? parseFloat(kayitlar[0].depth) : null;
 }
@@ -2014,8 +2074,9 @@ function saveVar(){
 
   // Depth = o günden önceki son depth + bu vardiya toplamı
   const gunlukToplam = (s1||0)+(s2||0)+(s3||0);
-  const sonDepth = sonDepthBul(sondaj, varMakine, tarih);
-  const depth = sonDepth != null ? parseFloat((sonDepth + gunlukToplam).toFixed(2)) : parseFloat(gunlukToplam.toFixed(2));
+  const depthHesaplanir = sondajDepthHesaplanir(sondaj);
+  const sonDepth = depthHesaplanir ? sonDepthBul(sondaj, varMakine, tarih) : null;
+  const depth = depthHesaplanir ? (sonDepth != null ? parseFloat((sonDepth + gunlukToplam).toFixed(2)) : parseFloat(gunlukToplam.toFixed(2))) : null;
   const lok   = document.getElementById('v-lok').value.trim();
   const not_  = document.getElementById('v-not').value.trim();
   const degisimSatirlari = kuyuDegisimSatirlari(tarih, lok, not_);
@@ -4207,7 +4268,8 @@ function exportAylikRapor(){
   });
   csv += `\nGÜNLÜK DELGİ\nMakine,Tarih,Sondaj Adı,Lokasyon,00:00-08:00,08:00-16:00,16:00-00:00,Toplam (m),Depth (m)\n`;
   ayRecs.sort((a,b)=>a.tarih>b.tarih?1:-1).forEach(r => {
-    csv += `${r.makine},${r.tarih},"${r.sondaj||''}","${r.Lokasyon||''}",${r.s1||''},${r.s2||''},${r.s3||''},${((r.s1||0)+(r.s2||0)+(r.s3||0)).toFixed(2)},"${r.depth||''}"\n`;
+    const depthCsv = sondajDepthHesaplanir(r.sondaj) ? (r.depth || '') : '';
+    csv += `${r.makine},${r.tarih},"${r.sondaj||''}","${r.Lokasyon||r.llokasyon||''}",${r.s1||''},${r.s2||''},${r.s3||''},${((r.s1||0)+(r.s2||0)+(r.s3||0)).toFixed(2)},"${depthCsv}"\n`;
   });
   csv += `\nDURAKLAMALAR\nMakine,Tarih,Sondaj No,Neden,Açıklama,Süre (dk)\n`;
   ayDurak.sort((a,b)=>a.tarih>b.tarih?1:-1).forEach(d => {
@@ -4246,9 +4308,9 @@ function exportKuyuFormu(){
   let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nKUYU TEKNİK VERİ FORMU · ${ayAdi}\n\n`;
   csv += `Kuyu No,Makine,Saha,Mevkii,Başlangıç,Bitiş,Azimut (°),Eğim (°),Planlanan (m),Toplam Delgi (m),Bitiş Kotu (m),Yer Su (m),Su Basıncı (Bar),Durum\n`;
   kuyular.forEach(k => {
-    const met = aktifMetraj(k.no);
-    const bk = hesapBitisKotu(k.z, k.eg, isAktifKuyu(k) ? met : k.der) || '';
-    csv += `${k.no},${k.makine},"${k.saha||''}","${k.mevkii||''}",${k.bas||''},${k.bit||''},${k.az||''},${k.eg||''},${k.der||''},${met.toFixed(2)},${bk},${k.su||''},${k.bar||''},${isAktifKuyu(k)?'Aktif':'Tamamlandı'}\n`;
+    const derinlik = kuyuDerinlikMetraj(k);
+    const bk = hesapBitisKotu(k.z, k.eg, derinlik) || '';
+    csv += `${k.no},${k.makine},"${k.saha||''}","${k.mevkii||''}",${k.bas||''},${k.bit||''},${k.az||''},${k.eg||''},${k.der||''},${derinlik.toFixed(2)},${bk},${k.su||''},${k.bar||''},${isAktifKuyu(k)?'Aktif':'Tamamlandı'}\n`;
   });
   indir(csv, `Kuyu_Formu_${aktifAy}.csv`);
 }
@@ -4473,7 +4535,7 @@ document.addEventListener('click', hakedisOutsideClick);
 
 
 // Her açılışta import verisini yükle (localStorage'ı geç)
-db.kuyular = PRELOADED_KUYULAR;
+db.kuyular = PRELOADED_KUYULAR.map(cloneKuyu);
 normalizeDbMakineAdlari();
 db.gunluk  = PRELOADED_GUNLUK;
 normalizeDbMakineAdlari();
@@ -4481,7 +4543,7 @@ nextId = PRELOADED_NEXTID;
 ensureNextId();
 
 // Auth durumunu dinle
-db.kuyular = PRELOADED_KUYULAR;
+db.kuyular = PRELOADED_KUYULAR.map(cloneKuyu);
 normalizeDbMakineAdlari();
 ensureNextId();
 // sel-ay artık header'dan kaldırıldı; aktifAy ve seciliAy değişkenlerle yönetiliyor
@@ -5337,7 +5399,9 @@ function renderSondajAnim() {
         kuyuNo = donemKuyu.no || null;
         hedef = parseFloat(donemKuyu.hd) || 0;
 
-        if (bugunAyMi()) {
+        if (excelDerinlikKuyusu(kuyuNo)) {
+          derinlik = parseFloat(donemKuyu.der) || 0;
+        } else if (bugunAyMi()) {
           // Bugünün ayı: gerçek kümülatif derinlik (tüm zamanlar)
           const basDerinlik = parseFloat(donemKuyu.bm) || 0;
           const tumDelgi = db.gunluk
