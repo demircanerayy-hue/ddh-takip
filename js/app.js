@@ -660,18 +660,19 @@ function hesapBitisKotu(z, egim, derinlik){
 function aktifMetraj(kuyuNo){
   // Tüm aylardan o kuyunun toplam metrajı (yeni veri modeli: s1/s2/s3 per row)
   let toplam = 0;
+  const hedefNo = normalizeKuyuNo(kuyuNo);
   db.gunluk.forEach(r => {
     // Yeni model: sondaj alanında kuyu adı var
     if(r.sondaj){
-      const sondajlar = sondajParcalari(r.sondaj);
-      if(sondajlar.includes(kuyuNo)){
+      const sondajlar = sondajParcalari(r.sondaj).map(normalizeKuyuNo);
+      if(sondajlar.includes(hedefNo)){
         toplam += (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0);
       }
     }
     // Eski model (import uyumluluğu için)
     if(r.kuyular){
       r.kuyular.forEach(k => {
-        if(k.no === kuyuNo) toplam += parseFloat(k.ilerleme)||0;
+        if(normalizeKuyuNo(k.no) === hedefNo) toplam += parseFloat(k.ilerleme)||0;
       });
     }
   });
@@ -911,7 +912,7 @@ function araliklarCakisiyor(a, b){
 }
 
 function kuyuNolariFromSondaj(sondaj){
-  return (sondaj || '').split('/').map(s=>s.trim()).filter(Boolean).filter(no => no !== '-');
+  return sondajParcalari(sondaj).filter(no => no !== '-');
 }
 
 function gunlukMetraj(r){
@@ -1553,7 +1554,7 @@ function renderMak(m){
     const aktifK = db.kuyular.find(k => makineEslesir(k.makine, m) && isAktifKuyu(k));
     if(aktifKEl) aktifKEl.textContent = aktifK ? aktifK.no : '—';
     if(aktifMEl){
-      if(aktifK){ const met = aktifMetraj(aktifK.no); aktifMEl.textContent = met.toFixed(2)+' m'; }
+      if(aktifK){ const met = kuyuDerinlikMetraj(aktifK); aktifMEl.textContent = met.toFixed(2)+' m'; }
       else aktifMEl.textContent = '—';
     }
   } else {
@@ -1567,8 +1568,8 @@ function renderMak(m){
     }
     if(aktifMEl){
       const met = kuyular.reduce((s,no) => {
-        const ayRecs = db.gunluk.filter(r => r.makine===m && r.tarih && r.tarih.startsWith(aktifAy) &&
-          (r.sondaj||'').split('/').map(x=>x.trim()).includes(no));
+        const ayRecs = db.gunluk.filter(r => makineEslesir(r.makine, m) && r.tarih && r.tarih.startsWith(aktifAy) &&
+          kuyuNolariFromSondaj(r.sondaj).map(normalizeKuyuNo).includes(normalizeKuyuNo(no)));
         return s + ayRecs.reduce((ss,r) => ss+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0),0);
       },0);
       aktifMEl.textContent = met.toFixed(2)+' m';
@@ -1874,7 +1875,7 @@ function vardiyaCell(v){
 
 function kuyuDegisimParcalari(){
   const sondaj = (document.getElementById('v-sondaj')?.value || '').trim();
-  const parts = sondaj.split('/').map(s=>s.trim()).filter(Boolean);
+  const parts = sondajParcalari(sondaj);
   return parts.length === 2 ? parts : null;
 }
 
@@ -3026,7 +3027,8 @@ function hakedisBuildRecords(){
     const tariffKey = opexTariffKey(kuyu.eg);
     const tariff = OPEX_TARIFFS[tariffKey];
     const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
-    const metraj = metrajByKuyu[no] || 0;
+    const excelMetraj = excelDerinlikKuyusu(no) ? (parseFloat(kuyu.der) || 0) : 0;
+    const metraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
     const parts = opexDrillingParts(metraj, startDepth, tariff);
     // parts -> derinlik aralıklı satırlar (kademeli tarife)
     let d = startDepth;
@@ -4210,7 +4212,8 @@ function renderUyarilar(){
 function kuyuGecmisi(kuyuNo){
   const k = db.kuyular.find(x=>x.no===kuyuNo);
   if(!k) return;
-  const recs = db.gunluk.filter(r => r.sondaj && r.sondaj.split('/').map(s=>s.trim()).includes(kuyuNo))
+  const hedefNo = normalizeKuyuNo(kuyuNo);
+  const recs = db.gunluk.filter(r => r.sondaj && kuyuNolariFromSondaj(r.sondaj).map(normalizeKuyuNo).includes(hedefNo))
     .sort((a,b)=>a.tarih>b.tarih?1:-1);
   let kumMet = 0;
   const satirlar = recs.map(r=>{
