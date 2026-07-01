@@ -2858,14 +2858,6 @@ function hakedisKesintiEditable(durum){
   return durum === 'Taslak' || durum === 'Revize İstendi';
 }
 
-// Tablo hücresi: Taslak/Revize'de düzenlenebilir input, diğer durumlarda salt-okunur
-function hakedisKesintiCell(no, field, val, durum){
-  if(hakedisKesintiEditable(durum)){
-    return `<input class="fi hakedis-kesinti-cell" type="text" inputmode="decimal" value="${val > 0 ? String(val).replace('.', ',') : ''}" placeholder="0" onchange="setHakedisKesinti('${esc(no)}','${field}',this.value)">`;
-  }
-  return hakedisFmtTl(val);
-}
-
 function setHakedisKur(val){
   hakedisKur = hakedisParseNum(val);
   hakedisSaveStatus();
@@ -3231,9 +3223,6 @@ function renderHakedisSummaryTable(rows){
     <td class="c">${ozetFmt(r.metraj,1)}</td>
     <td class="c">${opexFmtUsd(r.brut)}</td>
     <td class="c">${tlCell(f,'hakedisTl')}</td>
-    <td class="c">${hakedisKesintiCell(r.no,'elektrik',kes.elektrik,r.durum)}</td>
-    <td class="c">${hakedisKesintiCell(r.no,'motorin',kes.motorin,r.durum)}</td>
-    <td class="c">${hakedisKesintiCell(r.no,'servis',kes.servis,r.durum)}</td>
     <td class="c">${hakedisFmtTl(kes.toplam)}</td>
     <td class="c">${tlCell(f,'netHakedisTl')}</td>
     <td class="c">${tlCell(f,'kdvTl')}</td>
@@ -3246,8 +3235,6 @@ function renderHakedisSummaryTable(rows){
   const metrajT = rows.reduce((s,r)=>s+r.metraj,0);
   const brutUsd = rows.reduce((s,r)=>s+r.brut,0);
   const kesToplam = rows.reduce((s,r)=>s+hakedisKesintiOf(r.no).toplam,0);
-  const kt = { elektrik:0, motorin:0, servis:0 };
-  rows.forEach(r => { const k = hakedisKesintiOf(r.no); kt.elektrik+=k.elektrik; kt.motorin+=k.motorin; kt.servis+=k.servis; });
   const ft = hakedisFinansForRows(rows);
   const tlFoot = (key)=> ft.valid ? hakedisFmtTl(ft[key]) : '-';
   wrap.innerHTML = `<div class="tw"><table>
@@ -3258,9 +3245,6 @@ function renderHakedisSummaryTable(rows){
       <th class="c" style="min-width:100px">Toplam Metraj</th>
       <th class="c" style="min-width:110px">Hakediş USD</th>
       <th class="c" style="min-width:120px">Hakediş TL</th>
-      <th class="c" style="min-width:120px">Kesinti (Elektrik) TL</th>
-      <th class="c" style="min-width:120px">Kesinti (Motorin) TL</th>
-      <th class="c" style="min-width:120px">Kesinti (Servis) TL</th>
       <th class="c" style="min-width:120px">Toplam Kesinti TL</th>
       <th class="c" style="min-width:130px">Net Hakediş TL</th>
       <th class="c" style="min-width:110px">KDV TL</th>
@@ -3275,9 +3259,6 @@ function renderHakedisSummaryTable(rows){
       <td class="c">${ozetFmt(metrajT,1)}</td>
       <td class="c">${opexFmtUsd(brutUsd)}</td>
       <td class="c">${tlFoot('hakedisTl')}</td>
-      <td class="c">${hakedisFmtTl(kt.elektrik)}</td>
-      <td class="c">${hakedisFmtTl(kt.motorin)}</td>
-      <td class="c">${hakedisFmtTl(kt.servis)}</td>
       <td class="c">${hakedisFmtTl(kesToplam)}</td>
       <td class="c">${tlFoot('netHakedisTl')}</td>
       <td class="c">${tlFoot('kdvTl')}</td>
@@ -3417,9 +3398,9 @@ function renderHakedisMultiTable(rows){
       <td class="c">${opexFmtUsd(r.brut)}</td>
       <td class="c">${hakedisFmtKur(hakedisKur)}</td>
       <td class="c">${tlCell(f,'hakedisTl')}</td>
-      <td class="c">${hakedisKesintiCell(r.no,'elektrik',kes.elektrik,r.durum)}</td>
-      <td class="c">${hakedisKesintiCell(r.no,'motorin',kes.motorin,r.durum)}</td>
-      <td class="c">${hakedisKesintiCell(r.no,'servis',kes.servis,r.durum)}</td>
+      <td class="c">${hakedisFmtTl(kes.elektrik)}</td>
+      <td class="c">${hakedisFmtTl(kes.motorin)}</td>
+      <td class="c">${hakedisFmtTl(kes.servis)}</td>
       <td class="c">${hakedisFmtTl(kes.toplam)}</td>
       <td class="c">${tlCell(f,'netHakedisTl')}</td>
       <td class="c">${tlCell(f,'kdvTl')}</td>
