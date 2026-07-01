@@ -3596,6 +3596,7 @@ function hakedisFinansBlockHtml(f, opts){
   const o = opts || {};
   const kes = o.kesinti || {elektrik:0, motorin:0, servis:0, toplam:0};
   const kio = o.kio || {metraj:0, usd:0, editable:false};
+  const durak = o.durak || {dk:0, usd:0};
   const tl = (v)=> f.valid ? hakedisFmtTl(v) : '<span style="color:var(--text3)">Kur giriniz</span>';
   const kInput = (field, val)=> o.editable
     ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${val > 0 ? esc(hakedisFmtTl(val)) : ''}" placeholder="₺0,00" onchange="${o.group ? `setHakedisTopluKesinti('${field}',this.value)` : `setHakedisKesinti('${esc(o.no)}','${field}',this.value)`}">`
@@ -3613,6 +3614,7 @@ function hakedisFinansBlockHtml(f, opts){
     ${hakedisFinansRow(kioTutarTlLabel, kioTl)}
     <div class="hakedis-finans-sep"></div>
     ${hakedisFinansRow('Hakediş Tutarı USD', opexFmtUsd(f.hakedisUsd))}
+    ${hakedisFinansRow('Duraklama/Bekleme Tutarı USD', `${opexFmtUsd(durak.usd)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${ozetFmt(durak.dk/60,1)} sa × $${OPEX_WAIT_USD_PER_HOUR}/sa)</span>`)}
     ${hakedisFinansRow('Dolar Kuru (USD/TL)', hakedisFmtKur(hakedisKur))}
     ${hakedisFinansRow('Hakediş Tutarı TL', tl(f.hakedisTl))}
     <div class="hakedis-finans-sep"></div>
@@ -3639,12 +3641,13 @@ function renderHakedisFinans(mode, data){
     const kes = hakedisKesintiOf(rec.no);
     const editable = hakedisKesintiEditable(rec.durum);
     const kio = {metraj:rec.kuyuIciMetraj, usd:rec.kuyuIciUsd, editable, no:rec.no};
+    const durak = {dk:rec.durakMin||0, usd:rec.waiting||0};
     wrap.innerHTML = `<div class="ozet-panel" style="margin-top:16px">
       <div class="ozet-panel-head">
         <div><span>FİNANSAL HAKEDİŞ ÖZETİ</span><strong>${esc(rec.no)}</strong></div>
         <small>${editable ? 'Kesinti ve kuyu içi ölçüm kalemleri düzenlenebilir' : 'Onay sonrası kilitli'} · TL bazlı ödeme özeti</small>
       </div>
-      ${hakedisFinansBlockHtml(f, {no:rec.no, durum:rec.durum, kesinti:kes, editable, kio})}
+      ${hakedisFinansBlockHtml(f, {no:rec.no, durum:rec.durum, kesinti:kes, editable, kio, durak})}
     </div>`;
     return;
   }
@@ -3656,12 +3659,13 @@ function renderHakedisFinans(mode, data){
     const kioMetrajT = rows.reduce((s,r)=>s+(r.kuyuIciMetraj||0),0);
     const kioUsdT = rows.reduce((s,r)=>s+(r.kuyuIciUsd||0),0);
     const kio = {metraj:kioMetrajT, usd:kioUsdT, editable:false};
+    const durak = {dk:rows.reduce((s,r)=>s+(r.durakMin||0),0), usd:rows.reduce((s,r)=>s+(r.waiting||0),0)};
     wrap.innerHTML = `<div class="ozet-panel" style="margin-top:16px">
       <div class="ozet-panel-head">
         <div><span>FİNANSAL HAKEDİŞ ÖZETİ</span><strong>${rows.length} kuyu seçili</strong></div>
         <small>Kesinti seçili kuyular için tek kalem girilir · TL bazlı ödeme özeti</small>
       </div>
-      ${hakedisFinansBlockHtml(f, {kesinti:kes, editable:true, group:true, kio,
+      ${hakedisFinansBlockHtml(f, {kesinti:kes, editable:true, group:true, kio, durak,
         kioTitle:'Toplam Kuyu İçi Ölçüm Metrajı', kioUsdLabel:'Toplam Kuyu İçi Ölçüm Tutarı USD', kioTutarTlLabel:'Toplam Kuyu İçi Ölçüm Tutarı TL'})}
     </div>`;
     return;
@@ -3677,12 +3681,13 @@ function renderHakedisFinans(mode, data){
   const kioMetrajAll = rows.reduce((s,r)=>s+(r.kuyuIciMetraj||0),0);
   const kioUsdAll = rows.reduce((s,r)=>s+(r.kuyuIciUsd||0),0);
   const kioAll = {metraj:kioMetrajAll, usd:kioUsdAll, editable:false};
+  const durakAll = {dk:rows.reduce((s,r)=>s+(r.durakMin||0),0), usd:rows.reduce((s,r)=>s+(r.waiting||0),0)};
   wrap.innerHTML = `<div class="ozet-panel" style="margin-top:16px">
     <div class="ozet-panel-head">
       <div><span>FİNANSAL HAKEDİŞ ÖZETİ</span><strong>${esc(hakedisLocationFilter || 'Filtrelenmiş kuyular')}</strong></div>
       <small>TL bazlı toplam ödeme özeti</small>
     </div>
-    ${hakedisFinansBlockHtml(f, {kesinti:kesTop, editable:false, kio:kioAll,
+    ${hakedisFinansBlockHtml(f, {kesinti:kesTop, editable:false, kio:kioAll, durak:durakAll,
       kioTitle:'Toplam Kuyu İçi Ölçüm Metrajı', kioUsdLabel:'Toplam Kuyu İçi Ölçüm Tutarı USD', kioTutarTlLabel:'Toplam Kuyu İçi Ölçüm Tutarı TL'})}
   </div>`;
 }
