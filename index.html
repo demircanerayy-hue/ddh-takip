@@ -86,6 +86,7 @@
   <div class="tab" onclick="goPage('kuyular',this)">Yeraltı Kuyuları</div>
   <div class="tab" onclick="goPage('gunluk',this)">Günlük Delgi</div>
   <div class="tab" onclick="goPage('durak',this)">Duraklamalar</div>
+  <div class="tab" onclick="goPage('hakedis',this)">Hakediş</div>
   <div class="tab" onclick="goPage('ozet',this)">Özet</div>
 </div>
 <!-- Gizli ay seçici — export ve eski fonksiyonlar için -->
@@ -344,6 +345,41 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+<!-- HAKEDİŞ -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-hakedis">
+  <div class="ozet-command">
+    <div>
+      <div class="ozet-kicker">HAKEDİŞ</div>
+      <div class="ozet-title">Hakediş</div>
+      <div class="ozet-sub">Kuyu bazlı delgi, bekleme, kesinti ve net hakediş hesapları</div>
+    </div>
+    <div class="ozet-filter-controls">
+      <select class="fi" id="hakedis-kuyu-sec" onchange="setHakedisKuyu(this.value)"></select>
+      <select class="fi" id="hakedis-mak-sec" onchange="renderHakedis()">
+        <option value="">Tüm Makineler</option>
+        <option>GS-200</option><option>DBC-U6</option><option>BATUHAN-600X</option><option>GS-600</option><option>BDU-600</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:flex-end;align-items:center">
+      <button class="btn btn-exp" onclick="exportHakedis()">↓ Export</button>
+    </div>
+  </div>
+
+  <div class="ozet-kpi-grid" id="hakedis-kpi-band"></div>
+
+  <div id="hakedis-info-wrap"></div>
+
+  <div class="ozet-panel">
+    <div class="ozet-panel-head">
+      <div><span id="hakedis-table-kicker">KUYU BAZLI HAKEDİŞ ÖZETİ</span><strong id="hakedis-table-title">Tüm kuyular</strong></div>
+      <small>USD bazlı, eğim ve derinlik aralığına göre kademeli hesaplanır</small>
+    </div>
+    <div id="hakedis-table-wrap"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
 <!-- ÖZET -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="page" id="page-ozet">
@@ -387,13 +423,6 @@
 
   <div class="ozet-main-grid">
     <div>
-      <div class="ozet-panel">
-        <div class="ozet-panel-head">
-          <div><span>OPEX MALİYET ÖZETİ</span><strong>Sondaj maliyet dağılımı</strong></div>
-          <small>USD bazlı, eğim ve metre aralığına göre hesaplanır</small>
-        </div>
-        <div id="ozet-opex-wrap"></div>
-      </div>
       <div class="ozet-panel">
         <div class="ozet-panel-head">
           <div><span>MAKİNE PERFORMANS MATRİSİ</span><strong>Dönem karşılaştırması</strong></div>

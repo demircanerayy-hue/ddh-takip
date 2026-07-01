@@ -941,6 +941,7 @@ function goPage(id, el){
     if(tumuTab) goMakTumu(tumuTab);
   }
   if(id==='durak') renderDurak();
+  if(id==='hakedis') renderHakedis();
   if(id==='ozet'){ loadButce(); renderOzetPage(); }
 }
 
@@ -1182,8 +1183,7 @@ function drawPieDurak(){
 
 
 
-// ── HAKEDİŞ — kaldırıldı ────────────────────────────────────
-function renderHakedis(){ /* hakedis sayfası kaldırıldı */ }
+// ── HAKEDİŞ — renderHakedis() aşağıda tanımlıdır ─────────────
 function drawHakedisTrend(){ }
 function drawHakedisMakine(){ }
 
@@ -2740,6 +2740,412 @@ function renderOzetOpex(period){
     ${s.missing ? `<div class="ozet-opex-note">Not: ${ozetFmt(s.missing,1)} m için kuyu teknik bilgisi bulunamadı; varsayılan karotlu tarife kullanıldı.</div>` : ''}`;
 }
 
+// ══════════════════════════════════════════════════════════════
+// HAKEDİŞ — kuyu bazlı OPEX / hakediş
+// (Mevcut OPEX tarife ve hesap yardımcıları yeniden kullanılır.)
+// ══════════════════════════════════════════════════════════════
+let hakedisSelectedKuyu = '';
+const HAKEDIS_DEFAULT_DURUM = 'Taslak';
+
+function hakedisSafe(v, fallback='-'){
+  if(v === undefined || v === null) return fallback;
+  const s = String(v).trim();
+  return s === '' ? fallback : s;
+}
+
+function hakedisFmtDate(d){
+  const s = hakedisSafe(d, '');
+  return s ? fmtDate(s) : '-';
+}
+
+// Delgi verisi olan kuyuların listesi (metraj > 0)
+function hakedisKuyuList(){
+  const map = {};
+  (db.gunluk || []).forEach(r => {
+    opexGunlukKuyuEntries(r).forEach(e => {
+      const no = String(e.no || '').trim();
+      if(!no || no === '-') return;
+      map[no] = (map[no] || 0) + (parseFloat(e.metre) || 0);
+    });
+  });
+  return Object.keys(map).filter(no => map[no] > 0).sort((a,b)=>a.localeCompare(b,'tr'));
+}
+
+// Her kuyu için kademeli (derinlik aralığı bazlı) OPEX / hakediş kaydı üretir
+function hakedisBuildRecords(){
+  const metrajByKuyu = {};
+  const gunlerByKuyu = {};
+  (db.gunluk || []).forEach(r => {
+    opexGunlukKuyuEntries(r).forEach(e => {
+      const no = String(e.no || '').trim();
+      if(!no || no === '-') return;
+      metrajByKuyu[no] = (metrajByKuyu[no] || 0) + (parseFloat(e.metre) || 0);
+      if(r.tarih){ (gunlerByKuyu[no] = gunlerByKuyu[no] || new Set()).add(r.tarih); }
+    });
+  });
+
+  // Duraklama ilişkilendirme: sondaj alanı bir kuyuya eşleşiyorsa o kuyuya yazılır
+  const durakByKuyu = {};
+  (db.duraklamalar || []).forEach(d => {
+    const kuyu = opexFindKuyu(d.sondaj);
+    if(!kuyu) return;
+    const no = String(kuyu.no || '').trim();
+    if(!no) return;
+    durakByKuyu[no] = (durakByKuyu[no] || 0) + (parseFloat(d.dk) || 0);
+  });
+
+  return Object.keys(metrajByKuyu).map(no => {
+    const kuyu = opexFindKuyu(no) || {};
+    const tariffKey = opexTariffKey(kuyu.eg);
+    const tariff = OPEX_TARIFFS[tariffKey];
+    const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
+    const metraj = metrajByKuyu[no] || 0;
+    const parts = opexDrillingParts(metraj, startDepth, tariff);
+    // parts -> derinlik aralıklı satırlar (kademeli tarife)
+    let d = startDepth;
+    const bands = parts.map(p => {
+      const from = d;
+      const to = d + p.metre;
+      d = to;
+      const tier = tariff.rates[p.bandIndex] || tariff.rates[tariff.rates.length - 1];
+      const tierLabel = opexDepthBandLabel(tier, p.bandIndex === tariff.rates.length - 1);
+      return { from, to, metre:p.metre, rate:p.rate, cost:p.cost, tierLabel };
+    });
+    const drilling = bands.reduce((s,b)=>s+b.cost,0);
+    const durakMin = durakByKuyu[no] || 0;
+    const waiting = durakMin / 60 * OPEX_WAIT_USD_PER_HOUR;
+    const kesinti = 0; // Veri modeli kesintiyi desteklemiyor; ileride girilebilir
+    const brut = drilling + waiting;
+    const net = brut - kesinti;
+    const avg = metraj ? drilling / metraj : 0;
+    const gunSay = gunlerByKuyu[no] ? gunlerByKuyu[no].size : 0;
+    const verim = gunSay ? metraj / gunSay : 0;
+    return {
+      no,
+      makine: hakedisSafe(kuyu.makine),
+      firma: hakedisSafe(kuyu.firma || kuyu.ekip),
+      bas: kuyu.bas || '',
+      bit: kuyu.bit || '',
+      egim: (kuyu.eg !== undefined && kuyu.eg !== null && kuyu.eg !== '') ? kuyu.eg : null,
+      tariffKey, tariffLabel: tariff.label,
+      startDepth, metraj, bands, drilling,
+      durakMin, waiting, kesinti, brut, net, avg, verim,
+      durum: HAKEDIS_DEFAULT_DURUM
+    };
+  }).sort((a,b)=>String(a.no).localeCompare(String(b.no),'tr'));
+}
+
+function hakedisEgimText(rec){
+  return rec.egim === null ? '-' : `${ozetFmt(rec.egim,0)}°`;
+}
+
+function hakedisStatusClass(durum){
+  if(durum === 'Onaylandı' || durum === 'Faturaya Aktarıldı' || durum === 'Ödendi') return 'good';
+  if(durum === 'Revize İstendi') return 'warn';
+  return 'idle';
+}
+
+function hakedisBadge(durum){
+  return `<span class="ozet-status ${hakedisStatusClass(durum)}">${esc(durum)}</span>`;
+}
+
+function hakedisBuildKuyuSelect(){
+  const sel = document.getElementById('hakedis-kuyu-sec');
+  if(!sel) return;
+  const list = hakedisKuyuList();
+  if(hakedisSelectedKuyu && !list.includes(hakedisSelectedKuyu)) hakedisSelectedKuyu = '';
+  sel.innerHTML = `<option value="">Tüm Kuyular</option>` + list.map(no => `<option value="${esc(no)}">${esc(no)}</option>`).join('');
+  sel.value = hakedisSelectedKuyu || '';
+}
+
+function setHakedisKuyu(val){
+  hakedisSelectedKuyu = val || '';
+  renderHakedis();
+}
+
+function hakedisKpiCards(items){
+  const wrap = document.getElementById('hakedis-kpi-band');
+  if(!wrap) return;
+  wrap.innerHTML = items.map(i => `<div class="ozet-kpi" style="--kpi-color:${i[4]}">
+    <div class="k-lbl">${i[0]}</div>
+    <div class="k-val">${i[1]}${i[2] ? ` <span>${i[2]}</span>` : ''}</div>
+    <div class="k-note">${i[3]}</div>
+  </div>`).join('');
+}
+
+function renderHakedisKpisAll(rows){
+  const brut = rows.reduce((s,r)=>s+r.brut,0);
+  const kesinti = rows.reduce((s,r)=>s+r.kesinti,0);
+  const net = rows.reduce((s,r)=>s+r.net,0);
+  const metraj = rows.reduce((s,r)=>s+r.metraj,0);
+  const drilling = rows.reduce((s,r)=>s+r.drilling,0);
+  const avg = metraj ? drilling / metraj : 0;
+  const onayBekleyen = rows.filter(r => r.durum !== 'Onaylandı' && r.durum !== 'Faturaya Aktarıldı' && r.durum !== 'Ödendi').length;
+  const faturaHazir = rows.filter(r => r.durum === 'Onaylandı' || r.durum === 'Faturaya Aktarıldı').reduce((s,r)=>s+r.net,0);
+  hakedisKpiCards([
+    ['Toplam Brüt Hakediş', opexFmtUsd(brut), '', `${rows.length} kuyu · delgi + bekleme`, 'var(--gold)'],
+    ['Toplam Kesinti', opexFmtUsd(kesinti), '', 'Kayıtlı kesinti', 'var(--warn)'],
+    ['Net Hakediş', opexFmtUsd(net), '', 'Brüt − kesinti', 'var(--green)'],
+    ['Ortalama $/m', `$${ozetFmt(avg,1)}`, '', `${ozetFmt(metraj,1)} m toplam`, 'var(--purple)'],
+    ['Onay Bekleyen Kuyu', ozetFmt(onayBekleyen,0), 'kuyu', 'Onay/fatura dışı', 'var(--blue)'],
+    ['Faturaya Hazır Tutar', opexFmtUsd(faturaHazir), '', 'Onaylı kuyuların neti', 'var(--gold)']
+  ]);
+}
+
+function renderHakedisKpisSingle(rec){
+  if(!rec){
+    hakedisKpiCards([
+      ['Seçili Kuyu Toplam Metrajı','0','m','Veri yok','var(--gold)'],
+      ['Delgi Tutarı','$0','','Veri yok','var(--green)'],
+      ['Duraklama/Bekleme Tutarı','$0','','Veri yok','var(--warn)'],
+      ['Kesinti','$0','','Veri yok','var(--warn)'],
+      ['Net Hakediş','$0','','Veri yok','var(--green)'],
+      ['Ortalama $/m','$0','','Veri yok','var(--purple)']
+    ]);
+    return;
+  }
+  hakedisKpiCards([
+    ['Seçili Kuyu Toplam Metrajı', ozetFmt(rec.metraj,1), 'm', esc(rec.no), 'var(--gold)'],
+    ['Delgi Tutarı', opexFmtUsd(rec.drilling), '', `${rec.bands.length} derinlik kademesi`, 'var(--green)'],
+    ['Duraklama/Bekleme Tutarı', opexFmtUsd(rec.waiting), '', `${ozetFmt(rec.durakMin,0)} dk`, 'var(--warn)'],
+    ['Kesinti', opexFmtUsd(rec.kesinti), '', 'Kayıtlı kesinti', 'var(--warn)'],
+    ['Net Hakediş', opexFmtUsd(rec.net), '', 'Brüt − kesinti', 'var(--green)'],
+    ['Ortalama $/m', `$${ozetFmt(rec.avg,1)}`, '', 'metre başı delgi', 'var(--purple)']
+  ]);
+}
+
+function renderHakedisInfo(rec){
+  const wrap = document.getElementById('hakedis-info-wrap');
+  if(!wrap) return;
+  if(!rec){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<div class="ozet-panel" style="margin-bottom:16px">
+    <div class="ozet-panel-head">
+      <div><span>KUYU BİLGİSİ</span><strong>${esc(rec.no)}</strong></div>
+      <small>Seçili kuyu özeti</small>
+    </div>
+    <div class="stat-row">
+      <div class="sc"><div class="sc-lbl">Kuyu</div><div class="sc-val">${esc(rec.no)}</div></div>
+      <div class="sc"><div class="sc-lbl">Makine</div><div class="sc-val">${esc(rec.makine)}</div></div>
+      <div class="sc"><div class="sc-lbl">Firma/Ekip</div><div class="sc-val">${esc(rec.firma)}</div></div>
+      <div class="sc"><div class="sc-lbl">Başlangıç</div><div class="sc-val">${hakedisFmtDate(rec.bas)}</div></div>
+      <div class="sc"><div class="sc-lbl">Bitiş</div><div class="sc-val">${hakedisFmtDate(rec.bit)}</div></div>
+      <div class="sc"><div class="sc-lbl">Toplam Metraj</div><div class="sc-val gold">${ozetFmt(rec.metraj,1)} <span>m</span></div></div>
+      <div class="sc"><div class="sc-lbl">Ortalama Verim</div><div class="sc-val">${ozetFmt(rec.verim,1)} <span>m/gün</span></div></div>
+      <div class="sc"><div class="sc-lbl">Toplam Duraklama</div><div class="sc-val">${ozetFmt(rec.durakMin,0)} <span>dk</span></div></div>
+      <div class="sc"><div class="sc-lbl">Hakediş Durumu</div><div class="sc-val">${hakedisBadge(rec.durum)}</div></div>
+    </div>
+  </div>`;
+}
+
+function renderHakedisSummaryTable(rows){
+  const wrap = document.getElementById('hakedis-table-wrap');
+  if(!wrap) return;
+  if(!rows.length){
+    wrap.innerHTML = '<div class="ozet-empty">Hakediş hesaplanacak kuyu verisi bulunamadı.</div>';
+    return;
+  }
+  const body = rows.map(r => `<tr>
+    <td>${esc(r.no)}</td>
+    <td>${esc(r.makine)}</td>
+    <td>${esc(r.firma)}</td>
+    <td>${hakedisFmtDate(r.bas)}</td>
+    <td>${hakedisFmtDate(r.bit)}</td>
+    <td class="c">${ozetFmt(r.metraj,1)}</td>
+    <td class="c">${hakedisEgimText(r)}</td>
+    <td class="c">${opexFmtUsd(r.drilling)}</td>
+    <td class="c">${opexFmtUsd(r.waiting)}</td>
+    <td class="c">${opexFmtUsd(r.kesinti)}</td>
+    <td class="c">${opexFmtUsd(r.brut)}</td>
+    <td class="c">${opexFmtUsd(r.net)}</td>
+    <td>${hakedisBadge(r.durum)}</td>
+  </tr>`).join('');
+  const t = {
+    metraj: rows.reduce((s,r)=>s+r.metraj,0),
+    drilling: rows.reduce((s,r)=>s+r.drilling,0),
+    waiting: rows.reduce((s,r)=>s+r.waiting,0),
+    kesinti: rows.reduce((s,r)=>s+r.kesinti,0),
+    brut: rows.reduce((s,r)=>s+r.brut,0),
+    net: rows.reduce((s,r)=>s+r.net,0)
+  };
+  wrap.innerHTML = `<div class="tw"><table>
+    <thead><tr>
+      <th style="min-width:90px">Kuyu</th>
+      <th style="min-width:110px">Makine</th>
+      <th style="min-width:100px">Firma/Ekip</th>
+      <th style="min-width:100px">Başlangıç</th>
+      <th style="min-width:100px">Bitiş</th>
+      <th class="c" style="min-width:100px">Toplam Metraj</th>
+      <th class="c" style="min-width:60px">Eğim</th>
+      <th class="c" style="min-width:100px">Delgi Tutarı</th>
+      <th class="c" style="min-width:120px">Bekleme/Duraklama</th>
+      <th class="c" style="min-width:90px">Kesinti</th>
+      <th class="c" style="min-width:110px">Brüt Hakediş</th>
+      <th class="c" style="min-width:110px">Net Hakediş</th>
+      <th style="min-width:110px">Durum</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr style="font-weight:900;border-top:2px solid var(--border2)">
+      <td>TOPLAM</td><td></td><td></td><td></td><td></td>
+      <td class="c">${ozetFmt(t.metraj,1)}</td><td></td>
+      <td class="c">${opexFmtUsd(t.drilling)}</td>
+      <td class="c">${opexFmtUsd(t.waiting)}</td>
+      <td class="c">${opexFmtUsd(t.kesinti)}</td>
+      <td class="c">${opexFmtUsd(t.brut)}</td>
+      <td class="c">${opexFmtUsd(t.net)}</td>
+      <td></td>
+    </tr></tfoot>
+  </table></div>`;
+}
+
+function renderHakedisDetailTable(rec){
+  const wrap = document.getElementById('hakedis-table-wrap');
+  if(!wrap) return;
+  if(!rec){
+    wrap.innerHTML = '<div class="ozet-empty">Seçili kuyu için hakediş verisi bulunamadı.</div>';
+    return;
+  }
+  const drillTip = `${esc(rec.tariffLabel)} / ${hakedisEgimText(rec)}`;
+  const bandRows = rec.bands.length ? rec.bands.map(b => `<tr>
+    <td>${esc(rec.no)}</td>
+    <td>${esc(rec.makine)}</td>
+    <td>${esc(rec.firma)}</td>
+    <td>${drillTip}</td>
+    <td class="c">${ozetFmt(b.from,0)}</td>
+    <td class="c">${ozetFmt(b.to,0)}</td>
+    <td class="c">${esc(b.tierLabel)}</td>
+    <td class="c">${ozetFmt(b.metre,1)}</td>
+    <td class="c">$${ozetFmt(b.rate,0)}/m</td>
+    <td class="c">${opexFmtUsd(b.cost)}</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">${opexFmtUsd(0)}</td>
+    <td class="c">${opexFmtUsd(b.cost)}</td>
+    <td class="c">${opexFmtUsd(b.cost)}</td>
+    <td>Delgi</td>
+    <td>${hakedisBadge(rec.durum)}</td>
+  </tr>`).join('') : `<tr><td colspan="18" style="text-align:center;padding:16px;color:var(--text3)">Derinlik kademesi verisi yok</td></tr>`;
+
+  const durakRow = `<tr>
+    <td>${esc(rec.no)}</td>
+    <td>${esc(rec.makine)}</td>
+    <td>${esc(rec.firma)}</td>
+    <td>Bekleme / Duraklama</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">—</td>
+    <td class="c">${ozetFmt(rec.durakMin,0)} dk</td>
+    <td class="c">$${OPEX_WAIT_USD_PER_HOUR}/sa</td>
+    <td class="c">${opexFmtUsd(rec.waiting)}</td>
+    <td class="c">${opexFmtUsd(0)}</td>
+    <td class="c">${opexFmtUsd(rec.waiting)}</td>
+    <td class="c">${opexFmtUsd(rec.waiting)}</td>
+    <td>${rec.durakMin > 0 ? 'Kuyu bazlı duraklama' : 'Duraklama kaydı yok'}</td>
+    <td>${hakedisBadge(rec.durum)}</td>
+  </tr>`;
+
+  wrap.innerHTML = `<div class="tw"><table>
+    <thead><tr>
+      <th style="min-width:90px">Kuyu</th>
+      <th style="min-width:110px">Makine</th>
+      <th style="min-width:100px">Firma/Ekip</th>
+      <th style="min-width:130px">Delgi Tipi / Eğim</th>
+      <th class="c" style="min-width:90px">Derinlik Başlangıç</th>
+      <th class="c" style="min-width:90px">Derinlik Bitiş</th>
+      <th class="c" style="min-width:110px">Derinlik Aralığı</th>
+      <th class="c" style="min-width:80px">Metraj</th>
+      <th class="c" style="min-width:90px">Birim Fiyat</th>
+      <th class="c" style="min-width:100px">Delgi Tutarı</th>
+      <th class="c" style="min-width:100px">Duraklama Süresi</th>
+      <th class="c" style="min-width:120px">Duraklama Birim Fiyatı</th>
+      <th class="c" style="min-width:100px">Duraklama Tutarı</th>
+      <th class="c" style="min-width:90px">Kesinti</th>
+      <th class="c" style="min-width:110px">Brüt Hakediş</th>
+      <th class="c" style="min-width:110px">Net Hakediş</th>
+      <th style="min-width:130px">Açıklama</th>
+      <th style="min-width:110px">Durum</th>
+    </tr></thead>
+    <tbody>${bandRows}${durakRow}</tbody>
+    <tfoot><tr style="font-weight:900;border-top:2px solid var(--border2)">
+      <td>TOPLAM</td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td class="c">${ozetFmt(rec.metraj,1)}</td><td></td>
+      <td class="c">${opexFmtUsd(rec.drilling)}</td>
+      <td class="c">${ozetFmt(rec.durakMin,0)} dk</td><td></td>
+      <td class="c">${opexFmtUsd(rec.waiting)}</td>
+      <td class="c">${opexFmtUsd(rec.kesinti)}</td>
+      <td class="c">${opexFmtUsd(rec.brut)}</td>
+      <td class="c">${opexFmtUsd(rec.net)}</td>
+      <td></td>
+      <td>${hakedisBadge(rec.durum)}</td>
+    </tr></tfoot>
+  </table></div>`;
+}
+
+function renderHakedis(){
+  hakedisBuildKuyuSelect();
+  const records = hakedisBuildRecords();
+  const kicker = document.getElementById('hakedis-table-kicker');
+  const title = document.getElementById('hakedis-table-title');
+  if(hakedisSelectedKuyu){
+    const rec = records.find(r => r.no === hakedisSelectedKuyu);
+    if(kicker) kicker.textContent = 'DETAYLI OPEX MALİYET TABLOSU';
+    if(title) title.textContent = hakedisSelectedKuyu;
+    renderHakedisKpisSingle(rec);
+    renderHakedisInfo(rec);
+    renderHakedisDetailTable(rec);
+  } else {
+    const mak = document.getElementById('hakedis-mak-sec');
+    const makVal = mak ? mak.value : '';
+    const rows = makVal ? records.filter(r => makineEslesir(r.makine, makVal)) : records;
+    if(kicker) kicker.textContent = 'KUYU BAZLI HAKEDİŞ ÖZETİ';
+    if(title) title.textContent = makVal ? makVal : 'Tüm kuyular';
+    renderHakedisKpisAll(rows);
+    const info = document.getElementById('hakedis-info-wrap');
+    if(info) info.innerHTML = '';
+    renderHakedisSummaryTable(rows);
+  }
+}
+
+function exportHakedis(){
+  const records = hakedisBuildRecords();
+  const stamp = new Date().toLocaleDateString('tr-TR');
+  if(hakedisSelectedKuyu){
+    const rec = records.find(r => r.no === hakedisSelectedKuyu);
+    if(!rec){ indir(`Kuyu verisi bulunamadı\n`, `Hakedis_${hakedisSelectedKuyu}.csv`); return; }
+    let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nHAKEDİŞ · DETAYLI OPEX MALİYET TABLOSU · ${rec.no}\nRapor Tarihi: ${stamp}\n\n`;
+    csv += `Kuyu,Makine,Firma/Ekip,Delgi Tipi / Eğim,Derinlik Başlangıç,Derinlik Bitiş,Derinlik Aralığı,Metraj (m),Birim Fiyat ($/m),Delgi Tutarı ($),Duraklama Süresi (dk),Duraklama Birim Fiyatı ($/sa),Duraklama Tutarı ($),Kesinti ($),Brüt Hakediş ($),Net Hakediş ($),Açıklama,Durum\n`;
+    const tip = `${rec.tariffLabel} / ${rec.egim===null?'-':rec.egim+'°'}`;
+    rec.bands.forEach(b => {
+      csv += `${rec.no},"${rec.makine}","${rec.firma}","${tip}",${Math.round(b.from)},${Math.round(b.to)},"${b.tierLabel}",${b.metre.toFixed(1)},${b.rate},${Math.round(b.cost)},,,,0,${Math.round(b.cost)},${Math.round(b.cost)},Delgi,${rec.durum}\n`;
+    });
+    csv += `${rec.no},"${rec.makine}","${rec.firma}","Bekleme / Duraklama",,,,,,,${Math.round(rec.durakMin)},${OPEX_WAIT_USD_PER_HOUR},${Math.round(rec.waiting)},0,${Math.round(rec.waiting)},${Math.round(rec.waiting)},"${rec.durakMin>0?'Kuyu bazlı duraklama':'Duraklama kaydı yok'}",${rec.durum}\n`;
+    csv += `TOPLAM,,,,,,,${rec.metraj.toFixed(1)},,${Math.round(rec.drilling)},${Math.round(rec.durakMin)},,${Math.round(rec.waiting)},${Math.round(rec.kesinti)},${Math.round(rec.brut)},${Math.round(rec.net)},,${rec.durum}\n`;
+    indir(csv, `Hakedis_${rec.no}.csv`);
+    return;
+  }
+  const mak = document.getElementById('hakedis-mak-sec');
+  const makVal = mak ? mak.value : '';
+  const rows = makVal ? records.filter(r => makineEslesir(r.makine, makVal)) : records;
+  let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nHAKEDİŞ · KUYU BAZLI HAKEDİŞ ÖZETİ${makVal?(' · '+makVal):''}\nRapor Tarihi: ${stamp}\n\n`;
+  csv += `Kuyu,Makine,Firma/Ekip,Başlangıç,Bitiş,Toplam Metraj (m),Eğim (°),Delgi Tutarı ($),Bekleme/Duraklama ($),Kesinti ($),Brüt Hakediş ($),Net Hakediş ($),Durum\n`;
+  rows.forEach(r => {
+    csv += `${r.no},"${r.makine}","${r.firma}",${r.bas||''},${r.bit||''},${r.metraj.toFixed(1)},${r.egim===null?'':r.egim},${Math.round(r.drilling)},${Math.round(r.waiting)},${Math.round(r.kesinti)},${Math.round(r.brut)},${Math.round(r.net)},${r.durum}\n`;
+  });
+  const t = {
+    metraj: rows.reduce((s,r)=>s+r.metraj,0),
+    drilling: rows.reduce((s,r)=>s+r.drilling,0),
+    waiting: rows.reduce((s,r)=>s+r.waiting,0),
+    kesinti: rows.reduce((s,r)=>s+r.kesinti,0),
+    brut: rows.reduce((s,r)=>s+r.brut,0),
+    net: rows.reduce((s,r)=>s+r.net,0)
+  };
+  csv += `TOPLAM,,,,,${t.metraj.toFixed(1)},,${Math.round(t.drilling)},${Math.round(t.waiting)},${Math.round(t.kesinti)},${Math.round(t.brut)},${Math.round(t.net)},\n`;
+  indir(csv, `Hakedis_Ozet${makVal?('_'+makVal):''}.csv`);
+}
+
 function ozetMakineRows(period){
   const ayRecs = (db.gunluk || []).filter(r => ozetInPeriod(r.tarih, period));
   const ayDurak = (db.duraklamalar || []).filter(d => ozetInPeriod(d.tarih, period));
@@ -2885,7 +3291,6 @@ function renderOzetPage(){
   renderOzetMetrajChart(rows);
   renderOzetInsights(rows, period);
   renderOzetDurak(period);
-  renderOzetOpex(period);
 
   const kartWrap=document.getElementById('ceyrek-kartlar');
   if(kartWrap){
@@ -3406,6 +3811,9 @@ window.saveButce    = saveButce;
 window.renderOzetPage = renderOzetPage;
 window.setOzetFilter = setOzetFilter;
 window.setOzetRange = setOzetRange;
+window.renderHakedis = renderHakedis;
+window.setHakedisKuyu = setHakedisKuyu;
+window.exportHakedis = exportHakedis;
 
 // ── INIT ────────────────────────────────────────────────────
 // Preloaded data moved to js/data.js
