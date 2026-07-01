@@ -2798,6 +2798,7 @@ function hakedisSaveStatus(){
 function hakedisParseNum(str){
   if(str == null) return 0;
   let s = String(str).trim().replace(/\s/g,'');
+  s = s.replace(/[^0-9,.\-]/g,''); // ₺, TL, $ gibi para birimi işaretlerini at
   if(!s) return 0;
   if(s.indexOf(',') >= 0 && s.indexOf('.') >= 0){
     s = s.replace(/\./g,'').replace(',', '.');   // nokta binlik, virgül ondalık
@@ -3467,7 +3468,7 @@ function hakedisFinansBlockHtml(f, opts){
   const kes = o.kesinti || {elektrik:0, motorin:0, servis:0, toplam:0};
   const tl = (v)=> f.valid ? hakedisFmtTl(v) : '<span style="color:var(--text3)">Kur giriniz</span>';
   const kInput = (field, val)=> o.editable
-    ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${val > 0 ? String(val).replace('.', ',') : ''}" placeholder="0" onchange="${o.group ? `setHakedisTopluKesinti('${field}',this.value)` : `setHakedisKesinti('${esc(o.no)}','${field}',this.value)`}">`
+    ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${val > 0 ? esc(hakedisFmtTl(val)) : ''}" placeholder="₺0,00" onchange="${o.group ? `setHakedisTopluKesinti('${field}',this.value)` : `setHakedisKesinti('${esc(o.no)}','${field}',this.value)`}">`
     : hakedisFmtTl(val);
   return `<div class="hakedis-finans">
     ${hakedisFinansRow('Hakediş Tutarı USD', opexFmtUsd(f.hakedisUsd))}
