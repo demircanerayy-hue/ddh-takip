@@ -3467,7 +3467,7 @@ function hakedisFinansBlockHtml(f, opts){
   const kes = o.kesinti || {elektrik:0, motorin:0, servis:0, toplam:0};
   const tl = (v)=> f.valid ? hakedisFmtTl(v) : '<span style="color:var(--text3)">Kur giriniz</span>';
   const kInput = (field, val)=> o.editable
-    ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" value="${val > 0 ? String(val).replace('.', ',') : ''}" placeholder="0" onchange="${o.group ? `setHakedisTopluKesinti('${field}',this.value)` : `setHakedisKesinti('${esc(o.no)}','${field}',this.value)`}">`
+    ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${val > 0 ? String(val).replace('.', ',') : ''}" placeholder="0" onchange="${o.group ? `setHakedisTopluKesinti('${field}',this.value)` : `setHakedisKesinti('${esc(o.no)}','${field}',this.value)`}">`
     : hakedisFmtTl(val);
   return `<div class="hakedis-finans">
     ${hakedisFinansRow('Hakediş Tutarı USD', opexFmtUsd(f.hakedisUsd))}
