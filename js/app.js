@@ -870,7 +870,6 @@ function validateVardiyaKaydi(tarih, sondaj, vals){
     const k = kuyuBul(no, varMakine);
     if(!k){ alert(`${no} kuyusu ${varMakine} makinesine atanmis kuyu listesinde bulunamadi.`); return false; }
     if(!makineEslesir(k.makine, varMakine)){ alert(`${no} kuyusu ${k.makine || '-'} makinesine atanmis. ${varMakine} icin kaydedilemez.`); return false; }
-    if(!isAktifKuyu(k)){ alert(`${no} tamamlanmis durumda. Yeni ilerleme girmek icin once kuyuyu yeniden aktif edin.`); return false; }
   }
 
   for(const v of girilenler){
@@ -2012,7 +2011,7 @@ function openVar(m){
   document.getElementById('v-tarih').value = new Date().toISOString().split('T')[0];
   // Datalist güncelle
   const dl = document.getElementById('vkl');
-  if(dl) dl.innerHTML = db.kuyular.filter(k=>makineEslesir(k.makine,m) && isAktifKuyu(k)).map(k=>`<option value="${esc(k.no)}">`).join('');
+  if(dl) dl.innerHTML = db.kuyular.filter(k=>makineEslesir(k.makine,m)).map(k=>`<option value="${esc(k.no)}">`).join('');
   // Aktif kuyuyu otomatik doldur — seçili AYA göre
   const aktifK = ayMakineAktifKuyu(m);
   const sondajNo = aktifK ? aktifK.no : '';
