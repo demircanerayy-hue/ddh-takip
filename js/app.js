@@ -2960,10 +2960,21 @@ function hakedisFlow(durum){
   }
 }
 
+// Her durumun bir önceki adımı (yanlışlıkla ilerletince geri dönmek için)
+const HAKEDIS_PREV = {
+  'Kontrol Bekliyor':   'Taslak',
+  'Onaylandı':          'Kontrol Bekliyor',
+  'Revize İstendi':     'Kontrol Bekliyor',
+  'Faturaya Aktarıldı': 'Onaylandı',
+  'Ödendi':             'Faturaya Aktarıldı'
+};
+
 function hakedisActionButtons(no, durum){
   const flow = hakedisFlow(durum);
-  if(!flow.length) return '';
-  return flow.map(f => `<button class="btn btn-${f[2]} hakedis-act" onclick="hakedisAction('${esc(no)}','${f[1]}')">${f[0]}</button>`).join('');
+  const fwd = flow.map(f => `<button class="btn btn-${f[2]} hakedis-act" onclick="hakedisAction('${esc(no)}','${f[1]}')">${f[0]}</button>`).join('');
+  const prev = HAKEDIS_PREV[durum];
+  const back = prev ? `<button class="btn btn-d hakedis-act" onclick="hakedisUndo('${esc(no)}')" title="Bir önceki adıma dön: ${esc(prev)}">↶ Geri Al</button>` : '';
+  return fwd + back;
 }
 
 function hakedisActionsHtml(no, durum){
@@ -2984,6 +2995,22 @@ function hakedisAction(no, toDurum){
   if(toDurum === 'Faturaya Aktarıldı'){ meta.faturaTarihi = bugun; }
   if(toDurum === 'Ödendi'){ meta.odemeTarihi = bugun; }
   hakedisStatusMap[no] = toDurum;
+  hakedisMetaMap[no] = meta;
+  hakedisSaveStatus();
+  renderHakedis();
+}
+
+function hakedisUndo(no){
+  const cur = hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM;
+  const prev = HAKEDIS_PREV[cur];
+  if(!prev) return;
+  // Geri alınan adıma ait meta bilgisini temizle
+  const meta = Object.assign({}, hakedisMetaMap[no] || {});
+  if(cur === 'Onaylandı'){ delete meta.onaylayan; delete meta.onayTarihi; }
+  if(cur === 'Faturaya Aktarıldı'){ delete meta.faturaTarihi; }
+  if(cur === 'Ödendi'){ delete meta.odemeTarihi; }
+  if(cur === 'Revize İstendi'){ delete meta.revizeNot; }
+  hakedisStatusMap[no] = prev;
   hakedisMetaMap[no] = meta;
   hakedisSaveStatus();
   renderHakedis();
@@ -4120,6 +4147,7 @@ window.hakedisPickAll = hakedisPickAll;
 window.hakedisToggleKuyu = hakedisToggleKuyu;
 window.hakedisToggleDetail = hakedisToggleDetail;
 window.hakedisAction = hakedisAction;
+window.hakedisUndo = hakedisUndo;
 window.hakedisBulkKontrol = hakedisBulkKontrol;
 document.addEventListener('click', hakedisOutsideClick);
 
