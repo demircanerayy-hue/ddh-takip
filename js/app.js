@@ -304,12 +304,17 @@ function mergeSavedKuyular(data){
   const maxPre = preloadedKuyuMaxId();
   const merged = PRELOADED_KUYULAR.map(cloneKuyu);
   const seenIds = new Set(merged.map(k => parseInt(k.id,10) || 0));
+  // no'ya göre de tekilleştir: aynı kuyu no'su hem preloaded'da hem de
+  // (yanlışlıkla) farklı bir id ile kullanıcı verisinde varsa ikizlenmesin.
+  const seenNos = new Set(merged.map(k => normalizeKuyuNo(k.no)));
   const addUserKuyular = rows => {
     (rows || []).forEach(k => {
       const id = parseInt(k && k.id, 10) || 0;
-      if(id > maxPre && !seenIds.has(id)){
+      const no = normalizeKuyuNo(k && k.no);
+      if(id > maxPre && !seenIds.has(id) && !seenNos.has(no)){
         merged.push(cloneKuyu(k));
         seenIds.add(id);
+        seenNos.add(no);
       }
     });
   };
@@ -1853,6 +1858,10 @@ function saveKuyu(){
     if(idx!==-1) db.kuyular[idx] = {...db.kuyular[idx],...data};
     showToast('Kuyu güncellendi', no);
   } else {
+    if(db.kuyular.some(k => normalizeKuyuNo(k.no) === normalizeKuyuNo(no))){
+      alert(`${no} kuyusu zaten listede var. İkizlenmemesi için lütfen mevcut kaydı düzenleyin.`);
+      return;
+    }
     data.id = uid();
     db.kuyular.push(data);
     showToast('Yeni kuyu eklendi', no);
