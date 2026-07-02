@@ -657,10 +657,32 @@ function hesapBitisKotu(z, egim, derinlik){
 }
 
 // ── AKTİF METRAj: vardiya kayıtlarından topla ───────────────
-function aktifMetraj(kuyuNo){
+// db.gunluk'u tek geçişte tarayıp kuyuNo -> toplam metraj haritası çıkarır.
+// Çok satırlı listelerde (renderKuyular gibi) her satır için ayrı ayrı
+// tüm gunluk'u taramak yerine bu harita bir kez kurulup O(1) sorgulanır.
+function buildMetrajMap(){
+  const map = new Map();
+  const ekle = (no, miktar) => {
+    if(!no || !miktar) return;
+    map.set(no, (map.get(no)||0) + miktar);
+  };
+  db.gunluk.forEach(r => {
+    if(r.sondaj){
+      const toplamSatir = (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0);
+      sondajParcalari(r.sondaj).map(normalizeKuyuNo).forEach(no => ekle(no, toplamSatir));
+    }
+    if(r.kuyular){
+      r.kuyular.forEach(k => ekle(normalizeKuyuNo(k.no), parseFloat(k.ilerleme)||0));
+    }
+  });
+  return map;
+}
+
+function aktifMetraj(kuyuNo, metrajMap){
+  const hedefNo = normalizeKuyuNo(kuyuNo);
+  if(metrajMap) return metrajMap.get(hedefNo) || 0;
   // Tüm aylardan o kuyunun toplam metrajı (yeni veri modeli: s1/s2/s3 per row)
   let toplam = 0;
-  const hedefNo = normalizeKuyuNo(kuyuNo);
   db.gunluk.forEach(r => {
     // Yeni model: sondaj alanında kuyu adı var
     if(r.sondaj){
@@ -762,11 +784,11 @@ function excelDerinlikKuyusu(no){
   return n !== null && n <= EXCEL_DERINLIK_SON_KUYU;
 }
 
-function kuyuDerinlikMetraj(k){
+function kuyuDerinlikMetraj(k, metrajMap){
   if(!k) return 0;
   const plan = parseFloat(k.der) || 0;
   if(excelDerinlikKuyusu(k.no)) return plan;
-  const met = aktifMetraj(k.no);
+  const met = aktifMetraj(k.no, metrajMap);
   return met > 0 ? met : plan;
 }
 
@@ -1384,17 +1406,18 @@ function renderKuyular(){
     });
   }
   document.getElementById('k-count').textContent = `Yeraltı Kuyuları (${list.length})`;
+  const metrajMap = buildMetrajMap();
   document.getElementById('k-tbody').innerHTML = list.length
-    ? list.map(kuyuRow).join('')
+    ? list.map(k => kuyuRow(k, metrajMap)).join('')
     : `<tr><td colspan="15" style="text-align:center;padding:28px;color:var(--text3)">Kayıt yok</td></tr>`;
 }
 
-function kuyuRow(k){
+function kuyuRow(k, metrajMap){
   const isAktif = isAktifKuyu(k);
-  const met = aktifMetraj(k.no);
+  const met = aktifMetraj(k.no, metrajMap);
   const excelSabit = excelDerinlikKuyusu(k.no);
   // Hem aktif hem tamamlanan kuyuda fiili delgi metrajı; delgi yoksa plan derinliğe düş
-  const derinlikGoster = kuyuDerinlikMetraj(k);
+  const derinlikGoster = kuyuDerinlikMetraj(k, metrajMap);
   const bitisKotu = hesapBitisKotu(k.z, k.eg, derinlikGoster);
   const bitisKotuGoster = bitisKotu ? parseFloat(bitisKotu).toFixed(2) : '—';
   const pct = k.der > 0 ? Math.min(100, Math.round(met/k.der*100)) : 0;
