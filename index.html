@@ -657,6 +657,32 @@
   </div>
 </div>
 
+<!-- HAKEDİŞ METRAJI DÜZENLEME MODAL -->
+<div class="mo" id="hakedis-metraj-modal" onclick="if(event.target===this)closeHakedisMetraj()">
+<div class="mb hakedis-metraj-modal-box">
+  <div class="mt2" id="hm-title">Hakediş Metrajı</div>
+  <div class="hakedis-metraj-summary">
+    <div><span>Sistem hesabı</span><strong id="hm-sistem">-</strong></div>
+    <div><span>Fark</span><strong id="hm-fark">-</strong></div>
+  </div>
+  <div class="fg">
+    <div class="ff full">
+      <label class="fl" for="hm-metraj">Hakediş Metrajı (m)</label>
+      <input class="fi" id="hm-metraj" type="text" inputmode="decimal" autocomplete="off" placeholder="0,0">
+    </div>
+    <div class="ff full">
+      <label class="fl" for="hm-neden">Düzeltme Nedeni</label>
+      <textarea class="fi hakedis-metraj-note" id="hm-neden" rows="3" placeholder="Örn. Son 1,5 metre hakedişe kabul edilmedi"></textarea>
+    </div>
+  </div>
+  <div class="hakedis-metraj-error" id="hm-error"></div>
+  <div class="mftr">
+    <button class="btn btn-g" id="hm-reset" onclick="resetHakedisMetraj()">Otomatiğe Dön</button>
+    <button class="btn btn-g" onclick="closeHakedisMetraj()">İptal</button>
+    <button class="btn btn-p" onclick="saveHakedisMetraj()">Kaydet</button>
+  </div>
+</div></div>
+
 <!-- KUYU GEÇMİŞİ MODAL -->
 <div class="mo" id="kuyu-gecmis-modal" onclick="if(event.target===this)closeKuyuGecmis()">
 <div class="mb wide">
@@ -678,6 +704,6 @@
   </div>
 </div></div>
 
-<script type="module" src="./js/app.js?v=vardiya-completed-kuyu-20260701-5"></script>
+<script type="module" src="./js/app.js?v=hakedis-manuel-metraj-20260801-1"></script>
 </body>
 </html>

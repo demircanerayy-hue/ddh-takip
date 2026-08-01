@@ -17,7 +17,7 @@ const GECMIS_DUZENLEME_KILIT_GUN = 7;
 
 // ── VERİ ────────────────────────────────────────────────────
 const SK = 'ddh2_v1';
-let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}};
+let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}, hakedis:{}};
 let nextId = 1;
 let editKId = null;
 let aktifMakine = 'GS-200';
@@ -346,6 +346,7 @@ function firebasePayload(){
     kuyular_updates,
     nextId,
     butce:           db.butce || {},
+    hakedis:         db.hakedis || {},
     durakResetV:     db.durakResetV || 0,
     at: new Date().toISOString()
   };
@@ -465,6 +466,7 @@ function applySavedData(data){
   normalizeDuraklamaNedenleri();
   normalizeDbMakineAdlari();
   db.butce = data.butce || db.butce || {};
+  db.hakedis = data.hakedis || db.hakedis || {};
   db.durakResetV = data.durakResetV || 0;
   if(data.nextId && data.nextId > nextId) nextId = data.nextId;
 
@@ -2854,6 +2856,8 @@ const hakedisKesintiMap = {};          // kuyuNo -> {elektrik, motorin, servis} 
 const hakedisTopluKesinti = { elektrik:0, motorin:0, servis:0 }; // çoklu görünümde tek kalem kesinti (TL)
 const HAKEDIS_KIO_RATE_USD = 52;       // Kuyu İçi Ölçüm birim fiyatı (USD/m) — merkezi sabit
 const hakedisOlcumMap = {};            // kuyuNo -> kuyu içi ölçüm metrajı (m, manuel)
+const hakedisMetrajMap = {};           // kuyuNo -> manuel hakediş metrajı + düzeltme geçmişi
+let hakedisMetrajEditNo = '';
 
 // Lokasyon/kuyu adından grup belirleyen güvenli helper
 function getLocationGroup(value){
@@ -2875,19 +2879,23 @@ function hakedisLocationGroup(kuyu){
 function hakedisLoadStatus(){
   try{
     const raw = localStorage.getItem(HAKEDIS_STORE_KEY);
-    if(!raw) return;
-    const obj = JSON.parse(raw) || {};
+    const localObj = raw ? (JSON.parse(raw) || {}) : {};
+    const obj = Object.assign({}, localObj, db.hakedis || {});
     if(obj.durum) Object.assign(hakedisStatusMap, obj.durum);
     if(obj.meta)  Object.assign(hakedisMetaMap, obj.meta);
     if(obj.kesinti) Object.assign(hakedisKesintiMap, obj.kesinti);
     if(obj.topluKesinti) Object.assign(hakedisTopluKesinti, obj.topluKesinti);
     if(obj.olcum) Object.assign(hakedisOlcumMap, obj.olcum);
+    if(obj.metraj) Object.assign(hakedisMetrajMap, obj.metraj);
     if(typeof obj.kur === 'number' && isFinite(obj.kur) && obj.kur > 0) hakedisKur = obj.kur;
   }catch(e){ /* güvenli yut */ }
 }
 
 function hakedisSaveStatus(){
-  try{ localStorage.setItem(HAKEDIS_STORE_KEY, JSON.stringify({durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, kur:hakedisKur})); }catch(e){ /* yut */ }
+  const value = {durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, metraj:hakedisMetrajMap, kur:hakedisKur};
+  db.hakedis = value;
+  try{ localStorage.setItem(HAKEDIS_STORE_KEY, JSON.stringify(value)); }catch(e){ /* yut */ }
+  save();
 }
 
 // "32,5" / "32.5" / "1.234,56" gibi girişleri güvenli parse et; negatif/0/NaN -> 0
@@ -3007,6 +3015,111 @@ function setHakedisOlcum(no, val){
   renderHakedis();
 }
 
+function hakedisMetrajOf(no, otomatikMetraj){
+  const raw = hakedisMetrajMap[no];
+  const entry = raw && typeof raw === 'object' ? raw : {metraj:raw};
+  const manuel = parseFloat(entry && entry.metraj);
+  const manuelMi = isFinite(manuel) && manuel > 0;
+  return {
+    otomatik: Math.max(0, Number(otomatikMetraj) || 0),
+    metraj: manuelMi ? manuel : Math.max(0, Number(otomatikMetraj) || 0),
+    manuelMi,
+    neden: entry && entry.neden ? String(entry.neden) : '',
+    duzelten: entry && entry.duzelten ? String(entry.duzelten) : '',
+    tarih: entry && entry.tarih ? String(entry.tarih) : '',
+    gecmis: Array.isArray(entry && entry.gecmis) ? entry.gecmis : []
+  };
+}
+
+function hakedisCurrentUser(){
+  const user = fbAuth && fbAuth.currentUser;
+  return user ? (user.displayName || user.email || 'Yetkili kullanıcı') : 'Yetkili kullanıcı';
+}
+
+function openHakedisMetraj(no){
+  const rec = hakedisBuildRecords().find(r => r.no === no);
+  if(!rec || !hakedisKesintiEditable(rec.durum)) return;
+  hakedisMetrajEditNo = no;
+  const title = document.getElementById('hm-title');
+  const sistem = document.getElementById('hm-sistem');
+  const input = document.getElementById('hm-metraj');
+  const neden = document.getElementById('hm-neden');
+  const fark = document.getElementById('hm-fark');
+  const reset = document.getElementById('hm-reset');
+  const err = document.getElementById('hm-error');
+  if(title) title.textContent = `Hakediş Metrajı · ${no}`;
+  if(sistem) sistem.textContent = `${ozetFmt(rec.otomatikMetraj,1)} m`;
+  if(input) input.value = String(rec.metraj).replace('.', ',');
+  if(neden) neden.value = rec.metrajMeta.neden || '';
+  if(reset) reset.style.display = rec.metrajManuel ? '' : 'none';
+  if(err) err.textContent = '';
+  if(fark) fark.textContent = `${ozetFmt(rec.metraj-rec.otomatikMetraj,1)} m`;
+  const modal = document.getElementById('hakedis-metraj-modal');
+  if(modal) modal.classList.add('open');
+  if(input){ input.oninput = updateHakedisMetrajFark; setTimeout(()=>input.focus(), 0); }
+}
+
+function updateHakedisMetrajFark(){
+  const input = document.getElementById('hm-metraj');
+  const fark = document.getElementById('hm-fark');
+  const rec = hakedisBuildRecords().find(r => r.no === hakedisMetrajEditNo);
+  if(!input || !fark || !rec) return;
+  const val = hakedisParseNum(input.value);
+  fark.textContent = val > 0 ? `${ozetFmt(val-rec.otomatikMetraj,1)} m` : '-';
+}
+
+function closeHakedisMetraj(){
+  const modal = document.getElementById('hakedis-metraj-modal');
+  if(modal) modal.classList.remove('open');
+  hakedisMetrajEditNo = '';
+}
+
+function saveHakedisMetraj(){
+  const no = hakedisMetrajEditNo;
+  const rec = hakedisBuildRecords().find(r => r.no === no);
+  const input = document.getElementById('hm-metraj');
+  const nedenEl = document.getElementById('hm-neden');
+  const err = document.getElementById('hm-error');
+  if(!rec || !hakedisKesintiEditable(rec.durum)) return;
+  const metraj = hakedisParseNum(input && input.value);
+  const neden = String(nedenEl && nedenEl.value || '').trim();
+  if(!(metraj > 0)){ if(err) err.textContent = 'Geçerli bir hakediş metrajı giriniz.'; return; }
+  if(!neden){ if(err) err.textContent = 'Düzeltme nedeni zorunludur.'; return; }
+  const old = hakedisMetrajOf(no, rec.otomatikMetraj);
+  const tarih = new Date().toISOString();
+  const duzelten = hakedisCurrentUser();
+  const gecmis = old.gecmis.concat([{islem:'manuel', onceki:old.metraj, yeni:metraj, neden, duzelten, tarih}]);
+  hakedisMetrajMap[no] = {metraj, neden, duzelten, tarih, gecmis};
+  closeHakedisMetraj();
+  hakedisSaveStatus();
+  renderHakedis();
+}
+
+function resetHakedisMetraj(){
+  const no = hakedisMetrajEditNo;
+  const rec = hakedisBuildRecords().find(r => r.no === no);
+  if(!rec || !rec.metrajManuel || !hakedisKesintiEditable(rec.durum)) return;
+  const old = hakedisMetrajOf(no, rec.otomatikMetraj);
+  const tarih = new Date().toISOString();
+  const duzelten = hakedisCurrentUser();
+  hakedisMetrajMap[no] = {
+    metraj:null, neden:'Otomatik metraja dönüldü', duzelten, tarih,
+    gecmis:old.gecmis.concat([{islem:'otomatik', onceki:old.metraj, yeni:rec.otomatikMetraj, neden:'Otomatik metraja dönüldü', duzelten, tarih}])
+  };
+  closeHakedisMetraj();
+  hakedisSaveStatus();
+  renderHakedis();
+}
+
+function hakedisMetrajCell(rec){
+  const manuel = rec.metrajManuel
+    ? `<span class="hakedis-manual-badge" title="${esc(rec.metrajMeta.neden)}">Manuel</span>`
+    : '';
+  const value = `<span class="hakedis-metraj-value">${ozetFmt(rec.metraj,1)} m</span>${manuel}`;
+  if(!hakedisKesintiEditable(rec.durum)) return `<div class="hakedis-metraj-cell">${value}</div>`;
+  return `<button class="hakedis-metraj-edit" type="button" onclick="openHakedisMetraj('${esc(rec.no)}')" title="Hakediş metrajını düzenle">${value}<span aria-hidden="true">✎</span></button>`;
+}
+
 function hakedisSafe(v, fallback='-'){
   if(v === undefined || v === null) return fallback;
   const s = String(v).trim();
@@ -3060,7 +3173,9 @@ function hakedisBuildRecords(){
     const tariff = OPEX_TARIFFS[tariffKey];
     const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
     const excelMetraj = excelDerinlikKuyusu(no) ? (parseFloat(kuyu.der) || 0) : 0;
-    const metraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
+    const otomatikMetraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
+    const metrajSecimi = hakedisMetrajOf(no, otomatikMetraj);
+    const metraj = metrajSecimi.metraj;
     const parts = opexDrillingParts(metraj, startDepth, tariff);
     // parts -> derinlik aralıklı satırlar (kademeli tarife)
     let d = startDepth;
@@ -3093,7 +3208,7 @@ function hakedisBuildRecords(){
       bit: kuyu.bit || '',
       egim: (kuyu.eg !== undefined && kuyu.eg !== null && kuyu.eg !== '') ? kuyu.eg : null,
       tariffKey, tariffLabel: tariff.label,
-      startDepth, metraj, bands, drilling,
+      startDepth, metraj, otomatikMetraj, metrajManuel:metrajSecimi.manuelMi, metrajMeta:metrajSecimi, bands, drilling,
       durakMin, waiting, kesinti, brut, net, avg, verim,
       kuyuIciMetraj: kio.metraj, kuyuIciUsd: kio.usd,
       durum: hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM,
@@ -3287,7 +3402,7 @@ function renderHakedisKpisAll(rows){
 function renderHakedisKpisSingle(rec){
   if(!rec){
     hakedisKpiCards([
-      ['Seçili Kuyu Toplam Metrajı','0','m','Veri yok','var(--gold)'],
+      ['Seçili Kuyu Hakediş Metrajı','0','m','Veri yok','var(--gold)'],
       ['Delgi Tutarı','$0','','Veri yok','var(--green)'],
       ['Duraklama/Bekleme Tutarı','$0','','Veri yok','var(--warn)'],
       ['Kesinti','$0','','Veri yok','var(--warn)'],
@@ -3297,7 +3412,7 @@ function renderHakedisKpisSingle(rec){
     return;
   }
   hakedisKpiCards([
-    ['Seçili Kuyu Toplam Metrajı', ozetFmt(rec.metraj,1), 'm', esc(rec.no), 'var(--gold)'],
+    ['Seçili Kuyu Hakediş Metrajı', ozetFmt(rec.metraj,1), 'm', rec.metrajManuel ? 'Manuel düzeltme' : esc(rec.no), 'var(--gold)'],
     ['Delgi Tutarı', opexFmtUsd(rec.drilling), '', `${rec.bands.length} derinlik kademesi`, 'var(--green)'],
     ['Duraklama/Bekleme Tutarı', opexFmtUsd(rec.waiting), '', `${ozetFmt(rec.durakMin,0)} dk`, 'var(--warn)'],
     ['Kesinti', opexFmtUsd(rec.kesinti), '', 'Kayıtlı kesinti', 'var(--warn)'],
@@ -3321,7 +3436,7 @@ function renderHakedisInfo(rec){
       <div class="sc"><div class="sc-lbl">Firma/Ekip</div><div class="sc-val">${esc(rec.firma)}</div></div>
       <div class="sc"><div class="sc-lbl">Başlangıç</div><div class="sc-val">${hakedisFmtDate(rec.bas)}</div></div>
       <div class="sc"><div class="sc-lbl">Bitiş</div><div class="sc-val">${hakedisFmtDate(rec.bit)}</div></div>
-      <div class="sc"><div class="sc-lbl">Toplam Metraj</div><div class="sc-val gold">${ozetFmt(rec.metraj,1)} <span>m</span></div></div>
+      <div class="sc"><div class="sc-lbl">Hakediş Metrajı</div><div class="sc-val gold">${hakedisMetrajCell(rec)}</div></div>
       <div class="sc"><div class="sc-lbl">Ortalama Verim</div><div class="sc-val">${ozetFmt(rec.verim,1)} <span>m/gün</span></div></div>
       <div class="sc"><div class="sc-lbl">Toplam Duraklama</div><div class="sc-val">${ozetFmt(rec.durakMin,0)} <span>dk</span></div></div>
       <div class="sc"><div class="sc-lbl">Hakediş Durumu</div><div class="sc-val">${hakedisBadge(rec.durum)}</div></div>
@@ -3359,7 +3474,7 @@ function renderHakedisSummaryTable(rows){
     <td>${esc(r.no)}</td>
     <td>${esc(r.locGroup)}</td>
     <td>${esc(r.makine)}</td>
-    <td class="c">${ozetFmt(r.metraj,1)}</td>
+    <td class="c">${hakedisMetrajCell(r)}</td>
     <td class="c">${opexFmtUsd(r.brut)}</td>
     <td class="c">${ozetFmt(r.kuyuIciMetraj,1)} m</td>
     <td class="c">${opexFmtUsd(r.kuyuIciUsd)}</td>
@@ -3385,7 +3500,7 @@ function renderHakedisSummaryTable(rows){
       <th style="min-width:90px">Kuyu</th>
       <th style="min-width:90px">Lokasyon</th>
       <th style="min-width:110px">Makine</th>
-      <th class="c" style="min-width:100px">Toplam Metraj</th>
+      <th class="c" style="min-width:130px">Hakediş Metrajı</th>
       <th class="c" style="min-width:110px">Hakediş USD</th>
       <th class="c" style="min-width:120px">Kuyu İçi Ölçüm Metrajı</th>
       <th class="c" style="min-width:130px">Kuyu İçi Ölçüm Tutarı USD</th>
@@ -3568,7 +3683,7 @@ function renderHakedisMultiTable(rows){
       <td>${esc(r.no)}</td>
       <td>${esc(r.locGroup)}</td>
       <td>${esc(r.makine)}</td>
-      <td class="c">${ozetFmt(r.metraj,1)}</td>
+      <td class="c">${hakedisMetrajCell(r)}</td>
       <td class="c">${opexFmtUsd(r.brut)}</td>
       <td class="c">${kioCell}</td>
       <td class="c">${opexFmtUsd(r.kuyuIciUsd)}</td>
@@ -3596,7 +3711,7 @@ function renderHakedisMultiTable(rows){
         <th style="min-width:90px">Kuyu</th>
         <th style="min-width:90px">Lokasyon</th>
         <th style="min-width:110px">Makine</th>
-        <th class="c" style="min-width:100px">Toplam Metraj</th>
+        <th class="c" style="min-width:130px">Hakediş Metrajı</th>
         <th class="c" style="min-width:110px">Hakediş USD</th>
         <th class="c" style="min-width:120px">Kuyu İçi Ölçüm Metrajı</th>
         <th class="c" style="min-width:130px">Kuyu İçi Ölçüm Tutarı USD</th>
@@ -3790,6 +3905,10 @@ function hakedisDetailCsv(rec){
   csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${HAKEDIS_KIO_RATE_USD}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı USD,${Math.round(rec.kuyuIciUsd)}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(rec.kuyuIciUsd * hakedisKur, f.valid)}\n`;
+  csv += `Sistem Metrajı (m),${rec.otomatikMetraj.toFixed(1)}\n`;
+  csv += `Hakediş Metrajı (m),${rec.metraj.toFixed(1)}\n`;
+  csv += `Metraj Kaynağı,${rec.metrajManuel ? 'Manuel' : 'Otomatik'}\n`;
+  csv += `Metraj Düzeltme Nedeni,"${String(rec.metrajMeta.neden||'').replace(/"/g,'""')}"\n`;
   csv += `Hakediş Tutarı USD,${Math.round(f.hakedisUsd)}\n`;
   csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(4) : ''}\n`;
   csv += `Hakediş Tutarı TL,${hakedisCsvTl(f.hakedisTl,f.valid)}\n`;
@@ -3809,11 +3928,11 @@ function hakedisCsvTl(v, valid){ return valid ? (Number(v)||0).toFixed(2) : ''; 
 
 function hakedisSummaryCsv(rows){
   const kurStr = hakedisKur > 0 ? hakedisKur.toFixed(4) : '';
-  let csv = `Lokasyon,Kuyu,Makine,Firma/Ekip,Toplam Metraj (m),Delgi Tutarı USD,Duraklama/Bekleme USD,Kuyu İçi Ölçüm Metrajı (m),Kuyu İçi Ölçüm Birim Fiyatı USD,Kuyu İçi Ölçüm Tutarı USD,Kuyu İçi Ölçüm Tutarı TL,Hakediş Tutarı USD,Dolar Kuru,Hakediş Tutarı TL,Kesinti (Elektrik) TL,Kesinti (Motorin) TL,Kesinti (Servis) TL,Toplam Kesinti TL,Net Hakediş TL,KDV (%20) TL,Tevkifat 4/10 TL,Tevkifatlı KDV TL,Net Ödenecek TL,Hakediş Durumu\n`;
+  let csv = `Lokasyon,Kuyu,Makine,Firma/Ekip,Sistem Metrajı (m),Hakediş Metrajı (m),Metraj Kaynağı,Metraj Düzeltme Nedeni,Delgi Tutarı USD,Duraklama/Bekleme USD,Kuyu İçi Ölçüm Metrajı (m),Kuyu İçi Ölçüm Birim Fiyatı USD,Kuyu İçi Ölçüm Tutarı USD,Kuyu İçi Ölçüm Tutarı TL,Hakediş Tutarı USD,Dolar Kuru,Hakediş Tutarı TL,Kesinti (Elektrik) TL,Kesinti (Motorin) TL,Kesinti (Servis) TL,Toplam Kesinti TL,Net Hakediş TL,KDV (%20) TL,Tevkifat 4/10 TL,Tevkifatlı KDV TL,Net Ödenecek TL,Hakediş Durumu\n`;
   rows.forEach(r => {
     const f = hakedisFinansForRec(r);
     const kes = hakedisKesintiOf(r.no);
-    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.metraj.toFixed(1)},${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatTutariTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
+    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.otomatikMetraj.toFixed(1)},${r.metraj.toFixed(1)},${r.metrajManuel?'Manuel':'Otomatik'},"${String(r.metrajMeta.neden||'').replace(/"/g,'""')}",${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatTutariTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
   });
   const ft = hakedisFinansForRows(rows);
   const kt = { elektrik:0, motorin:0, servis:0, toplam:0 };
@@ -3824,7 +3943,8 @@ function hakedisSummaryCsv(rows){
   const brutT = rows.reduce((s,r)=>s+r.brut,0);
   const kioMetrajT = rows.reduce((s,r)=>s+(r.kuyuIciMetraj||0),0);
   const kioUsdT = rows.reduce((s,r)=>s+(r.kuyuIciUsd||0),0);
-  csv += `TOPLAM,,,,${metrajT.toFixed(1)},${Math.round(drillT)},${Math.round(waitT)},${kioMetrajT.toFixed(1)},,${Math.round(kioUsdT)},${hakedisCsvTl(kioUsdT*hakedisKur,ft.valid)},${Math.round(brutT)},${kurStr},${hakedisCsvTl(ft.hakedisTl,ft.valid)},${kt.elektrik.toFixed(2)},${kt.motorin.toFixed(2)},${kt.servis.toFixed(2)},${kt.toplam.toFixed(2)},${hakedisCsvTl(ft.netHakedisTl,ft.valid)},${hakedisCsvTl(ft.kdvTl,ft.valid)},${hakedisCsvTl(ft.tevkifatTutariTl,ft.valid)},${hakedisCsvTl(ft.tevkifatliKdvTl,ft.valid)},${hakedisCsvTl(ft.netOdenecekTl,ft.valid)},\n`;
+  const otomatikMetrajT = rows.reduce((s,r)=>s+r.otomatikMetraj,0);
+  csv += `TOPLAM,,,,${otomatikMetrajT.toFixed(1)},${metrajT.toFixed(1)},,,${Math.round(drillT)},${Math.round(waitT)},${kioMetrajT.toFixed(1)},,${Math.round(kioUsdT)},${hakedisCsvTl(kioUsdT*hakedisKur,ft.valid)},${Math.round(brutT)},${kurStr},${hakedisCsvTl(ft.hakedisTl,ft.valid)},${kt.elektrik.toFixed(2)},${kt.motorin.toFixed(2)},${kt.servis.toFixed(2)},${kt.toplam.toFixed(2)},${hakedisCsvTl(ft.netHakedisTl,ft.valid)},${hakedisCsvTl(ft.kdvTl,ft.valid)},${hakedisCsvTl(ft.tevkifatTutariTl,ft.valid)},${hakedisCsvTl(ft.tevkifatliKdvTl,ft.valid)},${hakedisCsvTl(ft.netOdenecekTl,ft.valid)},\n`;
   return csv;
 }
 
@@ -4512,7 +4632,7 @@ function renderAll(){
 
 // ── KLAVYE ──────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeKuyu(); closeVar(); closeDurak(); }
+  if(e.key==='Escape'){ closeKuyu(); closeVar(); closeDurak(); closeHakedisMetraj(); }
 });
 
 // module scope → global (onclick için)
@@ -4574,6 +4694,10 @@ window.setHakedisKur = setHakedisKur;
 window.setHakedisKesinti = setHakedisKesinti;
 window.setHakedisTopluKesinti = setHakedisTopluKesinti;
 window.setHakedisOlcum = setHakedisOlcum;
+window.openHakedisMetraj = openHakedisMetraj;
+window.closeHakedisMetraj = closeHakedisMetraj;
+window.saveHakedisMetraj = saveHakedisMetraj;
+window.resetHakedisMetraj = resetHakedisMetraj;
 document.addEventListener('click', hakedisOutsideClick);
 
 // ── INIT ────────────────────────────────────────────────────
