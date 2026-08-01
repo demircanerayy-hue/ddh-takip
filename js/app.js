@@ -1,7 +1,31 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_DURAKLAMALAR, PRELOADED_NEXTID } from './data.js';
 import { RigAnim } from './ddhRigAnim.js?v=rig-v2-1-4';
 // ── SABITLER ────────────────────────────────────────────────
-const MAKINELER = ['GS-200','DBC-U6','BATUHAN-600X','GS-600','BDU-600'];
+const DEFAULT_APP_SETTINGS = {
+  version: 1,
+  firma: {
+    uygulamaAdi: 'DDH TAKİP SİSTEMİ',
+    firmaAdi: 'Gümüştaş Madencilik',
+    isletmeAdi: 'Bolkar Madeni',
+    birimAdi: 'Arama Birimi',
+    logoUrl: ''
+  },
+  makineler: [
+    {ad:'GS-200', renk:'#e9cd53', vardiyaMaxMetraj:60, aktif:true, aliases:['GS 200']},
+    {ad:'DBC-U6', renk:'#4f7d32', vardiyaMaxMetraj:60, aktif:true, aliases:['DBC U-6','DBC-U-6','U-6 ( YENİ )']},
+    {ad:'BATUHAN-600X', renk:'#f47721', vardiyaMaxMetraj:60, aktif:true, aliases:['BTHN-600X','BATUHAN 600X']},
+    {ad:'GS-600', renk:'#1d4f8f', vardiyaMaxMetraj:60, aktif:true, aliases:['GS 600']},
+    {ad:'BDU-600', renk:'#231f20', vardiyaMaxMetraj:60, aktif:true, aliases:['BDU 600']}
+  ],
+  finans: {beklemeUsdSaat:38, kuyuIciOlcumUsdMetre:52, kdvYuzde:20, tevkifatYuzde:40},
+  tarifeler: {
+    steep: {label:'Karotlu', note:'Eğim -45 altı', rates:[{from:0,to:200,rate:60},{from:200,to:400,rate:64},{from:400,to:600,rate:73}]},
+    neg45: {label:'0/-45 derece', note:'Eğim 0 ile -45', rates:[{from:0,to:200,rate:68},{from:200,to:400,rate:70},{from:400,to:600,rate:75}]},
+    pos45: {label:'0/+45 derece', note:'Pozitif eğim', rates:[{from:0,to:200,rate:71},{from:200,to:400,rate:74},{from:400,to:600,rate:74}]}
+  }
+};
+
+const MAKINELER = DEFAULT_APP_SETTINGS.makineler.map(m=>m.ad);
 const MAKINE_RENK = {
   'GS-200':       '#e9cd53',
   'DBC-U6':       '#4f7d32',
@@ -17,7 +41,8 @@ const GECMIS_DUZENLEME_KILIT_GUN = 7;
 
 // ── VERİ ────────────────────────────────────────────────────
 const SK = 'ddh2_v1';
-let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}, hakedis:{}};
+const APP_SETTINGS_CACHE_KEY = 'ddh_app_settings_v1';
+let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}, hakedis:{}, ayarlar:null, ayarGecmisi:[]};
 let nextId = 1;
 let editKId = null;
 let aktifMakine = 'GS-200';
@@ -347,6 +372,8 @@ function firebasePayload(){
     nextId,
     butce:           db.butce || {},
     hakedis:         db.hakedis || {},
+    ayarlar:         db.ayarlar || normalizeAppSettings(null),
+    ayarGecmisi:     db.ayarGecmisi || [],
     durakResetV:     db.durakResetV || 0,
     at: new Date().toISOString()
   };
@@ -467,6 +494,8 @@ function applySavedData(data){
   normalizeDbMakineAdlari();
   db.butce = data.butce || db.butce || {};
   db.hakedis = data.hakedis || db.hakedis || {};
+  db.ayarGecmisi = Array.isArray(data.ayarGecmisi) ? data.ayarGecmisi : (db.ayarGecmisi || []);
+  applyRuntimeSettings(data.ayarlar || db.ayarlar || null);
   db.durakResetV = data.durakResetV || 0;
   if(data.nextId && data.nextId > nextId) nextId = data.nextId;
 
@@ -610,16 +639,197 @@ const MAKINE_ALIAS = {
   'BDU-600': 'BDU-600',
   'BDU 600': 'BDU-600'
 };
+const CUSTOM_MAKINE_ALIAS = {};
 
-function makineKey(makine){
+function baseMakineKey(makine){
   const raw = String(makine || '').trim();
   const up = raw.toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ');
   return MAKINE_ALIAS[up] || MAKINE_ALIAS[raw] || raw;
 }
 
+function makineKey(makine){
+  const raw = String(makine || '').trim();
+  const up = raw.toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ');
+  return CUSTOM_MAKINE_ALIAS[up] || baseMakineKey(raw);
+}
+
+function cloneJson(value){ return JSON.parse(JSON.stringify(value)); }
+
+function readCachedAppSettings(){
+  try{
+    const raw = localStorage.getItem(APP_SETTINGS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+
+function cacheAppSettings(settings){
+  try{ localStorage.setItem(APP_SETTINGS_CACHE_KEY, JSON.stringify(settings)); }
+  catch(e){ /* Tarayıcı depolaması kapalıysa Firebase ayarları kullanılmaya devam eder. */ }
+}
+
+function ayarNum(value, fallback, min=0){
+  let s = String(value == null ? '' : value).trim().replace(/\s/g,'');
+  if(s.includes(',') && s.includes('.')) s = s.replace(/\./g,'').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isFinite(n) && n >= min ? n : fallback;
+}
+
+function normalizeAppSettings(raw){
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const def = DEFAULT_APP_SETTINGS;
+  const firmaSrc = src.firma || {};
+  const finansSrc = src.finans || {};
+  const machines = Array.isArray(src.makineler) && src.makineler.length ? src.makineler : def.makineler;
+  const makineler = machines.map((m,i) => {
+    const fallback = def.makineler[i] || {ad:`Makine ${i+1}`,renk:'#606363',vardiyaMaxMetraj:60,aktif:true,aliases:[]};
+    const ad = String(m && m.ad || fallback.ad).trim();
+    const renk = /^#[0-9a-f]{6}$/i.test(String(m && m.renk || '')) ? m.renk : fallback.renk;
+    return {
+      ad,
+      renk,
+      vardiyaMaxMetraj: ayarNum(m && m.vardiyaMaxMetraj, fallback.vardiyaMaxMetraj || 60, 1),
+      aktif: m && Object.prototype.hasOwnProperty.call(m,'aktif') ? !!m.aktif : true,
+      aliases: Array.isArray(m && m.aliases) ? [...new Set(m.aliases.map(x=>String(x||'').trim()).filter(Boolean))] : (fallback.aliases || [])
+    };
+  }).filter(m=>m.ad);
+  const tarifeler = {};
+  Object.keys(def.tarifeler).forEach(key => {
+    const d = def.tarifeler[key];
+    const t = src.tarifeler && src.tarifeler[key] || {};
+    const rates = Array.isArray(t.rates) && t.rates.length ? t.rates : d.rates;
+    tarifeler[key] = {
+      label:String(t.label || d.label).trim(),
+      note:String(t.note || d.note).trim(),
+      rates:rates.map((b,i) => {
+        const fb = d.rates[i] || d.rates[d.rates.length-1];
+        return {from:ayarNum(b && b.from,fb.from),to:ayarNum(b && b.to,fb.to),rate:ayarNum(b && b.rate,fb.rate)};
+      })
+    };
+  });
+  return {
+    version:1,
+    firma:{
+      uygulamaAdi:String(firmaSrc.uygulamaAdi || def.firma.uygulamaAdi).trim(),
+      firmaAdi:String(firmaSrc.firmaAdi || def.firma.firmaAdi).trim(),
+      isletmeAdi:String(firmaSrc.isletmeAdi || def.firma.isletmeAdi).trim(),
+      birimAdi:String(firmaSrc.birimAdi || def.firma.birimAdi).trim(),
+      logoUrl:String(firmaSrc.logoUrl || '').trim()
+    },
+    makineler:makineler.length ? makineler : cloneJson(def.makineler),
+    finans:{
+      beklemeUsdSaat:ayarNum(finansSrc.beklemeUsdSaat,def.finans.beklemeUsdSaat),
+      kuyuIciOlcumUsdMetre:ayarNum(finansSrc.kuyuIciOlcumUsdMetre,def.finans.kuyuIciOlcumUsdMetre),
+      kdvYuzde:ayarNum(finansSrc.kdvYuzde,def.finans.kdvYuzde),
+      tevkifatYuzde:ayarNum(finansSrc.tevkifatYuzde,def.finans.tevkifatYuzde)
+    },
+    tarifeler,
+    guncelleme:src.guncelleme || null
+  };
+}
+
+function getAppSettings(){
+  if(!db.ayarlar) db.ayarlar = normalizeAppSettings(null);
+  return db.ayarlar;
+}
+
+function aktifMakineListesi(){
+  const active = getAppSettings().makineler.filter(m=>m.aktif).map(m=>m.ad);
+  return active.length ? active : [...MAKINELER];
+}
+
+function makineAktifMi(ad){ return aktifMakineListesi().some(m=>makineEslesir(m,ad)); }
+
+function appReportHead(){
+  const f = getAppSettings().firma;
+  return [f.firmaAdi, f.isletmeAdi].filter(Boolean).join(' · ').toLocaleUpperCase('tr-TR');
+}
+
+function syncMachineSelect(id, names, emptyLabel){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const current = el.value;
+  el.innerHTML = (emptyLabel !== null ? `<option value="">${esc(emptyLabel)}</option>` : '') + names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(names.includes(current) || (emptyLabel !== null && current === '')) el.value = current;
+}
+
+let defaultBrandLogoSrc = '';
+let defaultAuthLogoSrc = '';
+function applyFirmaBranding(){
+  const f = getAppSettings().firma;
+  const brand = document.getElementById('app-brand-title');
+  const sub = document.getElementById('app-brand-sub');
+  const authBrand = document.getElementById('auth-brand-title');
+  const authSub = document.getElementById('auth-brand-sub');
+  if(brand) brand.textContent = f.uygulamaAdi;
+  if(sub) sub.textContent = [f.firmaAdi,f.isletmeAdi,f.birimAdi].filter(Boolean).join(' · ');
+  if(authBrand) authBrand.textContent = f.uygulamaAdi;
+  if(authSub) authSub.textContent = [f.firmaAdi,f.isletmeAdi,f.birimAdi].filter(Boolean).join(' · ');
+  const logo = document.querySelector('.hdr > div:first-child > img');
+  const authLogo = document.querySelector('.auth-logo img');
+  if(logo){
+    if(!defaultBrandLogoSrc) defaultBrandLogoSrc = logo.src;
+    if(f.logoUrl){ logo.src=f.logoUrl; logo.style.display=''; }
+    else if(f.firmaAdi === DEFAULT_APP_SETTINGS.firma.firmaAdi){ logo.src=defaultBrandLogoSrc; logo.style.display=''; }
+    else logo.style.display='none';
+    logo.alt = `${f.firmaAdi} Logo`;
+  }
+  if(authLogo){
+    if(!defaultAuthLogoSrc) defaultAuthLogoSrc = authLogo.src;
+    if(f.logoUrl){ authLogo.src=f.logoUrl; authLogo.style.display=''; }
+    else if(f.firmaAdi === DEFAULT_APP_SETTINGS.firma.firmaAdi){ authLogo.src=defaultAuthLogoSrc; authLogo.style.display=''; }
+    else authLogo.style.display='none';
+    authLogo.alt = `${f.firmaAdi} Logo`;
+  }
+  document.title = `${f.uygulamaAdi} · ${f.firmaAdi}`;
+}
+
+function syncMachineControls(){
+  const all = [...MAKINELER];
+  const active = aktifMakineListesi();
+  syncMachineSelect('q-km', all, 'Tüm Makineler');
+  syncMachineSelect('q-dm', all, 'Tüm Makineler');
+  syncMachineSelect('hakedis-mak-sec', all, 'Tüm Makineler');
+  syncMachineSelect('k-mak', active, null);
+  syncMachineSelect('d-mak', active, null);
+  const tabWrap = document.querySelector('#mak-tabs > div:first-child');
+  if(tabWrap){
+    tabWrap.innerHTML = `<div class="stab active" onclick="goMakTumu(this)">Tümü</div>` + all.map(n=>`<div class="stab${makineAktifMi(n)?'':' ayar-passive-tab'}" onclick="goMak(${esc(JSON.stringify(n))},this)">${esc(n)}${makineAktifMi(n)?'':' · Pasif'}</div>`).join('');
+  }
+  const pages = document.getElementById('mak-pages');
+  if(pages) pages.innerHTML = '';
+}
+
+function applyRuntimeSettings(settings){
+  const cfg = normalizeAppSettings(settings);
+  db.ayarlar = cfg;
+  cacheAppSettings(cfg);
+  MAKINELER.splice(0, MAKINELER.length, ...cfg.makineler.map(m=>m.ad));
+  Object.keys(MAKINE_RENK).forEach(k=>delete MAKINE_RENK[k]);
+  Object.keys(VARDIYA_MAX_METRAJ).forEach(k=>delete VARDIYA_MAX_METRAJ[k]);
+  Object.keys(CUSTOM_MAKINE_ALIAS).forEach(k=>delete CUSTOM_MAKINE_ALIAS[k]);
+  cfg.makineler.forEach(m => {
+    MAKINE_RENK[m.ad] = m.renk;
+    VARDIYA_MAX_METRAJ[m.ad] = m.vardiyaMaxMetraj;
+    CUSTOM_MAKINE_ALIAS[m.ad.toLocaleUpperCase('tr-TR')] = m.ad;
+    (m.aliases || []).forEach(a => { CUSTOM_MAKINE_ALIAS[String(a).toLocaleUpperCase('tr-TR')] = m.ad; });
+  });
+  OPEX_WAIT_USD_PER_HOUR = cfg.finans.beklemeUsdSaat;
+  HAKEDIS_KIO_RATE_USD = cfg.finans.kuyuIciOlcumUsdMetre;
+  HAKEDIS_KDV_ORANI = cfg.finans.kdvYuzde / 100;
+  HAKEDIS_TEVKIFAT_ORANI = cfg.finans.tevkifatYuzde / 100;
+  OPEX_TARIFFS = cloneJson(cfg.tarifeler);
+  const activeMachines = aktifMakineListesi();
+  if(!activeMachines.includes(aktifMakine)) aktifMakine = activeMachines[0];
+  if(!activeMachines.includes(varMakine)) varMakine = activeMachines[0];
+  window.aktifMakine = aktifMakine;
+  applyFirmaBranding();
+  syncMachineControls();
+}
+
 function normalizeDbMakineAdlari(){
   ['kuyular','gunluk','duraklamalar'].forEach(tbl => {
-    (db[tbl] || []).forEach(r => { if(r && r.makine) r.makine = makineKey(r.makine); });
+    (db[tbl] || []).forEach(r => { if(r && r.makine) r.makine = baseMakineKey(r.makine); });
   });
 }
 
@@ -1009,11 +1219,155 @@ function ayDegis(){
   zamanFiltre = 'ay';
   seciliHafta = null;
   seciliGun = null;
-window.aktifMakine = 'GS-200';
+window.aktifMakine = aktifMakine;
   renderAll();
 }
 
 // ── SAYFA NAV ───────────────────────────────────────────────
+function ayarMakineRowHtml(m){
+  const aliases = Array.isArray(m.aliases) ? m.aliases.join(', ') : '';
+  return `<div class="ayar-machine-row" data-ayar-machine>
+    <input class="fi" data-field="ad" data-original="${esc(m.ad)}" value="${esc(m.ad)}" placeholder="Makine adı">
+    <input class="ayar-color" data-field="renk" type="color" value="${esc(m.renk || '#606363')}" title="Makine rengi">
+    <input class="fi" data-field="max" type="number" min="1" step="1" value="${esc(m.vardiyaMaxMetraj || 60)}" title="Vardiya maksimum metrajı">
+    <input class="fi" data-field="aliases" value="${esc(aliases)}" placeholder="Eski adlar, virgülle">
+    <label class="ayar-switch"><input data-field="aktif" type="checkbox" ${m.aktif ? 'checked' : ''}><span>Aktif</span></label>
+  </div>`;
+}
+
+function ayarTarifeHtml(key, t){
+  return `<div class="ayar-tarife-card" data-ayar-tarife="${esc(key)}">
+    <div class="ayar-tarife-head">
+      <input class="fi" data-field="label" value="${esc(t.label)}" aria-label="Tarife adı">
+      <input class="fi" data-field="note" value="${esc(t.note)}" aria-label="Tarife açıklaması">
+    </div>
+    <div class="ayar-band-head"><span>Başlangıç (m)</span><span>Bitiş (m)</span><span>USD / metre</span></div>
+    ${t.rates.map(b=>`<div class="ayar-band-row" data-ayar-band>
+      <input class="fi" data-field="from" type="number" min="0" step="1" value="${esc(b.from)}">
+      <input class="fi" data-field="to" type="number" min="0" step="1" value="${esc(b.to)}">
+      <input class="fi" data-field="rate" type="number" min="0" step="0.01" value="${esc(b.rate)}">
+    </div>`).join('')}
+  </div>`;
+}
+
+function renderAyarlar(settingsOverride){
+  const cfg = normalizeAppSettings(settingsOverride || db.ayarlar || null);
+  const setVal = (id,val)=>{ const el=document.getElementById(id); if(el) el.value=val; };
+  setVal('ayar-uygulama',cfg.firma.uygulamaAdi);
+  setVal('ayar-firma',cfg.firma.firmaAdi);
+  setVal('ayar-isletme',cfg.firma.isletmeAdi);
+  setVal('ayar-birim',cfg.firma.birimAdi);
+  setVal('ayar-logo',cfg.firma.logoUrl || '');
+  setVal('ayar-bekleme',cfg.finans.beklemeUsdSaat);
+  setVal('ayar-kio',cfg.finans.kuyuIciOlcumUsdMetre);
+  setVal('ayar-kdv',cfg.finans.kdvYuzde);
+  setVal('ayar-tevkifat',cfg.finans.tevkifatYuzde);
+  const machines = document.getElementById('ayar-machines');
+  if(machines) machines.innerHTML = cfg.makineler.map(ayarMakineRowHtml).join('');
+  const tariffs = document.getElementById('ayar-tariffs');
+  if(tariffs) tariffs.innerHTML = Object.keys(cfg.tarifeler).map(k=>ayarTarifeHtml(k,cfg.tarifeler[k])).join('');
+  const meta = document.getElementById('ayar-meta');
+  if(meta){
+    const g = cfg.guncelleme;
+    meta.textContent = g && g.tarih ? `Son kayıt: ${new Date(g.tarih).toLocaleString('tr-TR')} · ${g.kullanici || 'Yetkili kullanıcı'}` : 'Henüz özel ayar kaydedilmedi; mevcut sistem varsayılanları kullanılıyor.';
+  }
+  const msg = document.getElementById('ayar-msg');
+  if(msg){ msg.textContent = settingsOverride ? 'Bu değerler forma getirildi. Uygulamak için kaydedin.' : ''; msg.className='ayar-msg'; }
+}
+
+function addAyarMakine(){
+  const wrap = document.getElementById('ayar-machines');
+  if(!wrap) return;
+  wrap.insertAdjacentHTML('beforeend', ayarMakineRowHtml({ad:'',renk:'#606363',vardiyaMaxMetraj:60,aktif:true,aliases:[]}));
+  const rows = wrap.querySelectorAll('[data-ayar-machine]');
+  const input = rows.length ? rows[rows.length-1].querySelector('[data-field="ad"]') : null;
+  if(input) input.focus();
+}
+
+function ayarInputNum(el){
+  if(!el) return NaN;
+  const s = String(el.value || '').trim().replace(',', '.');
+  return s === '' ? NaN : Number(s);
+}
+
+function readAyarlarForm(){
+  const firma = {
+    uygulamaAdi:String(document.getElementById('ayar-uygulama').value || '').trim(),
+    firmaAdi:String(document.getElementById('ayar-firma').value || '').trim(),
+    isletmeAdi:String(document.getElementById('ayar-isletme').value || '').trim(),
+    birimAdi:String(document.getElementById('ayar-birim').value || '').trim(),
+    logoUrl:String(document.getElementById('ayar-logo').value || '').trim()
+  };
+  if(!firma.uygulamaAdi || !firma.firmaAdi) throw new Error('Uygulama ve firma adı zorunludur.');
+  const makineler = [...document.querySelectorAll('[data-ayar-machine]')].map(row => {
+    const adEl = row.querySelector('[data-field="ad"]');
+    const ad = String(adEl.value || '').trim();
+    const original = String(adEl.dataset.original || '').trim();
+    const aliases = String(row.querySelector('[data-field="aliases"]').value || '').split(',').map(x=>x.trim()).filter(Boolean);
+    if(original && original !== ad) aliases.push(original);
+    const max = ayarInputNum(row.querySelector('[data-field="max"]'));
+    if(!ad) throw new Error('Makine adı boş bırakılamaz.');
+    if(!(max > 0)) throw new Error(`${ad} için vardiya üst sınırı geçersiz.`);
+    return {ad,renk:row.querySelector('[data-field="renk"]').value,vardiyaMaxMetraj:max,aktif:row.querySelector('[data-field="aktif"]').checked,aliases:[...new Set(aliases)]};
+  });
+  if(!makineler.length) throw new Error('En az bir makine tanımlanmalıdır.');
+  if(!makineler.some(m=>m.aktif)) throw new Error('En az bir makine aktif olmalıdır.');
+  const keys = makineler.map(m=>m.ad.toLocaleUpperCase('tr-TR'));
+  if(new Set(keys).size !== keys.length) throw new Error('Makine adları birbirinden farklı olmalıdır.');
+  const finans = {
+    beklemeUsdSaat:ayarInputNum(document.getElementById('ayar-bekleme')),
+    kuyuIciOlcumUsdMetre:ayarInputNum(document.getElementById('ayar-kio')),
+    kdvYuzde:ayarInputNum(document.getElementById('ayar-kdv')),
+    tevkifatYuzde:ayarInputNum(document.getElementById('ayar-tevkifat'))
+  };
+  if(Object.values(finans).some(v=>!isFinite(v)||v<0)) throw new Error('Finansal değerler sıfır veya daha büyük olmalıdır.');
+  if(finans.kdvYuzde > 100 || finans.tevkifatYuzde > 100) throw new Error('KDV ve tevkifat oranları %100’den büyük olamaz.');
+  const tarifeler = {};
+  document.querySelectorAll('[data-ayar-tarife]').forEach(card => {
+    const key = card.dataset.ayarTarife;
+    const label = String(card.querySelector('[data-field="label"]').value || '').trim();
+    const note = String(card.querySelector('[data-field="note"]').value || '').trim();
+    const rates = [...card.querySelectorAll('[data-ayar-band]')].map(row => ({
+      from:ayarInputNum(row.querySelector('[data-field="from"]')),
+      to:ayarInputNum(row.querySelector('[data-field="to"]')),
+      rate:ayarInputNum(row.querySelector('[data-field="rate"]'))
+    }));
+    if(!label || rates.some(b=>!isFinite(b.from)||!isFinite(b.to)||!isFinite(b.rate)||b.from<0||b.to<=b.from||b.rate<0)) throw new Error(`${label || 'Tarife'} için kademe değerlerini kontrol edin.`);
+    tarifeler[key] = {label,note,rates};
+  });
+  return normalizeAppSettings({firma,makineler,finans,tarifeler});
+}
+
+function saveAppSettings(){
+  const msg = document.getElementById('ayar-msg');
+  try{
+    const next = readAyarlarForm();
+    const previous = cloneJson(getAppSettings());
+    if(!hakedisStatusLoaded){ hakedisLoadStatus(); hakedisStatusLoaded = true; }
+    Object.keys(hakedisStatusMap).forEach(no => {
+      if(!hakedisKesintiEditable(hakedisStatusMap[no])) ensureHakedisFiyatSnapshot(no);
+    });
+    db.hakedis = hakedisStateValue();
+    const user = fbAuth.currentUser;
+    next.guncelleme = {tarih:new Date().toISOString(),kullanici:user ? (user.displayName || user.email || 'Yetkili kullanıcı') : 'Yetkili kullanıcı'};
+    db.ayarGecmisi = (db.ayarGecmisi || []).concat([{tarih:next.guncelleme.tarih,kullanici:next.guncelleme.kullanici,ayarlar:previous}]).slice(-10);
+    applyRuntimeSettings(next);
+    save();
+    renderAyarlar();
+    if(msg){ msg.textContent = 'Ayarlar kaydedildi. Operasyon kayıtları değiştirilmedi.'; msg.className='ayar-msg ok'; }
+  }catch(e){
+    if(msg){ msg.textContent = e.message || 'Ayarlar kaydedilemedi.'; msg.className='ayar-msg error'; }
+  }
+}
+
+function loadDefaultSettingsForm(){ renderAyarlar(DEFAULT_APP_SETTINGS); }
+
+function loadPreviousSettingsForm(){
+  const history = db.ayarGecmisi || [];
+  if(!history.length){ const msg=document.getElementById('ayar-msg'); if(msg) msg.textContent='Kayıtlı önceki ayar bulunmuyor.'; return; }
+  renderAyarlar(history[history.length-1].ayarlar);
+}
+
 function goPage(id, el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -1029,6 +1383,7 @@ function goPage(id, el){
   if(id==='durak') renderDurak();
   if(id==='hakedis') renderHakedis();
   if(id==='ozet'){ loadButce(); renderOzetPage(); }
+  if(id==='ayarlar') renderAyarlar();
 }
 
 // ── DASHBOARD ───────────────────────────────────────────────
@@ -1502,7 +1857,7 @@ function goMak(m, el){
   // Tümü gizle, makine sayfasını göster
   document.getElementById('tumu-wrap').innerHTML = '';
   document.getElementById('mak-pages').style.display = '';
-  document.getElementById('vardiya-ekle-btn').style.display = '';
+  document.getElementById('vardiya-ekle-btn').style.display = makineAktifMi(m) ? '' : 'none';
   renderVardiyaPerf();
   document.querySelectorAll('#mak-pages .spg').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('#mak-tabs .stab').forEach(t=>t.classList.remove('active'));
@@ -1695,7 +2050,7 @@ let editDurakId = null;
 function editDurak(id){
   const d = db.duraklamalar.find(x=>x.id===id); if(!d) return;
   editDurakId = id;
-  document.getElementById('d-mak').value      = d.makine||'GS-200';
+  document.getElementById('d-mak').value      = d.makine || aktifMakineListesi()[0];
   document.getElementById('d-tarih').value    = d.tarih||'';
   document.getElementById('d-vrd').value      = d.vardiya||1;
   const basSaatEl = document.getElementById('d-bas-saat');
@@ -1817,7 +2172,7 @@ function editKuyu(id){
   editKId = id;
   document.getElementById('m-kuyu-title').textContent = 'Kuyu Düzenle · '+k.no;
   document.getElementById('k-no').value   = k.no||'';
-  document.getElementById('k-mak').value  = k.makine||'GS-200';
+  document.getElementById('k-mak').value  = k.makine || aktifMakineListesi()[0];
   document.getElementById('k-bas').value  = k.bas||'';
   document.getElementById('k-bit').value  = k.bit||'';
   document.getElementById('k-az').value   = k.az||'';
@@ -2040,6 +2395,10 @@ function upsertGunlukRow(row){
 }
 
 function openVar(m){
+  if(!makineAktifMi(m)){
+    window.alert('Bu makine pasif durumda. Geçmiş kayıtlar görüntülenebilir ancak yeni vardiya girişi yapılamaz.');
+    return;
+  }
   varMakine = m;
   document.getElementById('m-var-title').textContent = m+' · Günlük Delgi Girişi';
   document.getElementById('v-tarih').value = new Date().toISOString().split('T')[0];
@@ -2629,8 +2988,8 @@ function ozetGunlukMetraj(r){
   return toplam;
 }
 
-const OPEX_WAIT_USD_PER_HOUR = 38;
-const OPEX_TARIFFS = {
+let OPEX_WAIT_USD_PER_HOUR = 38;
+let OPEX_TARIFFS = {
   steep: {
     label: 'Karotlu',
     note: 'Eğim -45 altı',
@@ -2849,14 +3208,15 @@ const HAKEDIS_STORE_KEY = 'hakedis_durum_v1';
 const HAKEDIS_DEFAULT_DURUM = 'Taslak';
 
 // ── Finansal sabitler (merkezi; ileride değiştirilebilir) ──
-const HAKEDIS_KDV_ORANI = 0.20;       // KDV %20
-const HAKEDIS_TEVKIFAT_ORANI = 0.40;  // Tevkifat 4/10
+let HAKEDIS_KDV_ORANI = 0.20;         // KDV oranı — Ayarlar'dan güncellenebilir
+let HAKEDIS_TEVKIFAT_ORANI = 0.40;    // Tevkifat oranı — Ayarlar'dan güncellenebilir
 let hakedisKur = 0;                    // Manuel USD/TL kuru (0 = girilmedi)
 const hakedisKesintiMap = {};          // kuyuNo -> {elektrik, motorin, servis} (TL) — tek kuyu
 const hakedisTopluKesinti = { elektrik:0, motorin:0, servis:0 }; // çoklu görünümde tek kalem kesinti (TL)
-const HAKEDIS_KIO_RATE_USD = 52;       // Kuyu İçi Ölçüm birim fiyatı (USD/m) — merkezi sabit
+let HAKEDIS_KIO_RATE_USD = 52;         // Kuyu İçi Ölçüm birim fiyatı (USD/m) — Ayarlar'dan güncellenebilir
 const hakedisOlcumMap = {};            // kuyuNo -> kuyu içi ölçüm metrajı (m, manuel)
 const hakedisMetrajMap = {};           // kuyuNo -> manuel hakediş metrajı + düzeltme geçmişi
+const hakedisFiyatSnapshotMap = {};     // kuyuNo -> kontrol anındaki tarife/finans ayarları
 let hakedisMetrajEditNo = '';
 
 // Lokasyon/kuyu adından grup belirleyen güvenli helper
@@ -2887,12 +3247,17 @@ function hakedisLoadStatus(){
     if(obj.topluKesinti) Object.assign(hakedisTopluKesinti, obj.topluKesinti);
     if(obj.olcum) Object.assign(hakedisOlcumMap, obj.olcum);
     if(obj.metraj) Object.assign(hakedisMetrajMap, obj.metraj);
+    if(obj.fiyatSnapshot) Object.assign(hakedisFiyatSnapshotMap, obj.fiyatSnapshot);
     if(typeof obj.kur === 'number' && isFinite(obj.kur) && obj.kur > 0) hakedisKur = obj.kur;
   }catch(e){ /* güvenli yut */ }
 }
 
+function hakedisStateValue(){
+  return {durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, metraj:hakedisMetrajMap, fiyatSnapshot:hakedisFiyatSnapshotMap, kur:hakedisKur};
+}
+
 function hakedisSaveStatus(){
-  const value = {durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, metraj:hakedisMetrajMap, kur:hakedisKur};
+  const value = hakedisStateValue();
   db.hakedis = value;
   try{ localStorage.setItem(HAKEDIS_STORE_KEY, JSON.stringify(value)); }catch(e){ /* yut */ }
   save();
@@ -2935,13 +3300,23 @@ function hakedisKesintiOf(no){
 }
 
 // Bir kuyunun manuel Kuyu İçi Ölçüm metrajı ve USD tutarı
-function hakedisOlcumOf(no){
+function hakedisOlcumOf(no, rateUsd){
   const metraj = Math.max(0, parseFloat(hakedisOlcumMap[no]) || 0);
-  return { metraj, usd: metraj * HAKEDIS_KIO_RATE_USD };
+  const rate = isFinite(rateUsd) ? rateUsd : HAKEDIS_KIO_RATE_USD;
+  return { metraj, rate, usd: metraj * rate };
+}
+
+function currentHakedisPricing(){
+  const cfg = getAppSettings();
+  return {tarifeler:cloneJson(cfg.tarifeler),finans:cloneJson(cfg.finans),tarih:new Date().toISOString()};
+}
+
+function ensureHakedisFiyatSnapshot(no){
+  if(!hakedisFiyatSnapshotMap[no]) hakedisFiyatSnapshotMap[no] = currentHakedisPricing();
 }
 
 // USD brüt + TL kesinti + kur -> tüm TL finansal alanlar (güvenli)
-function hakedisFinans(brutUsd, kesintiTl, kur){
+function hakedisFinans(brutUsd, kesintiTl, kur, kdvOrani=HAKEDIS_KDV_ORANI, tevkifatOrani=HAKEDIS_TEVKIFAT_ORANI){
   const hakedisUsd = Number(brutUsd) || 0;
   const kes = Number(kesintiTl) || 0;
   const valid = isFinite(kur) && kur > 0;
@@ -2951,21 +3326,26 @@ function hakedisFinans(brutUsd, kesintiTl, kur){
   }
   const hakedisTl = hakedisUsd * kur;
   const netHakedisTl = hakedisTl - kes;
-  const kdvTl = netHakedisTl * HAKEDIS_KDV_ORANI;
-  const tevkifatTutariTl = kdvTl * HAKEDIS_TEVKIFAT_ORANI;   // vergi dairesine tevkif edilerek ödenen KDV kısmı
+  const kdvTl = netHakedisTl * kdvOrani;
+  const tevkifatTutariTl = kdvTl * tevkifatOrani;   // vergi dairesine tevkif edilerek ödenen KDV kısmı
   const tevkifatliKdvTl = kdvTl - tevkifatTutariTl;          // satıcıya ödenen KDV kısmı (KDV - tevkifat)
   const netOdenecekTl = netHakedisTl + tevkifatliKdvTl;
   return { valid:true, hakedisUsd, kur, kesintiTl:kes, hakedisTl, netHakedisTl, kdvTl, tevkifatTutariTl, tevkifatliKdvTl, netOdenecekTl };
 }
 
 function hakedisFinansForRec(rec){
-  return hakedisFinans(rec.brut, hakedisKesintiOf(rec.no).toplam, hakedisKur);
+  return hakedisFinans(rec.brut, hakedisKesintiOf(rec.no).toplam, hakedisKur, rec.kdvOrani, rec.tevkifatOrani);
+}
+
+function hakedisFinansSum(items){
+  const fields = ['hakedisUsd','kesintiTl','hakedisTl','netHakedisTl','kdvTl','tevkifatTutariTl','tevkifatliKdvTl','netOdenecekTl'];
+  const out = {valid:isFinite(hakedisKur) && hakedisKur > 0 && items.every(x=>x.valid),kur:hakedisKur};
+  fields.forEach(k=>{ out[k]=items.reduce((s,x)=>s+(Number(x[k])||0),0); });
+  return out;
 }
 
 function hakedisFinansForRows(rows){
-  const brutUsd = rows.reduce((s,r)=>s + (Number(r.brut)||0), 0);
-  const kesintiTl = rows.reduce((s,r)=>s + hakedisKesintiOf(r.no).toplam, 0);
-  return hakedisFinans(brutUsd, kesintiTl, hakedisKur);
+  return hakedisFinansSum(rows.map(r=>hakedisFinansForRec(r)));
 }
 
 // Çoklu görünüm: kesinti tek kalem (hakedisTopluKesinti) olarak uygulanır
@@ -2977,8 +3357,12 @@ function hakedisTopluKesintiToplam(){
 }
 
 function hakedisFinansForRowsGroup(rows){
-  const brutUsd = rows.reduce((s,r)=>s + (Number(r.brut)||0), 0);
-  return hakedisFinans(brutUsd, hakedisTopluKesintiToplam().toplam, hakedisKur);
+  const totalCut = hakedisTopluKesintiToplam().toplam;
+  const totalBrut = rows.reduce((s,r)=>s+(Number(r.brut)||0),0);
+  return hakedisFinansSum(rows.map((r,i)=>{
+    const cut = totalBrut > 0 ? totalCut * ((Number(r.brut)||0)/totalBrut) : (i===0 ? totalCut : 0);
+    return hakedisFinans(r.brut, cut, hakedisKur, r.kdvOrani, r.tevkifatOrani);
+  }));
 }
 
 function setHakedisTopluKesinti(field, val){
@@ -3170,7 +3554,10 @@ function hakedisBuildRecords(){
   return Object.keys(metrajByKuyu).map(no => {
     const kuyu = opexFindKuyu(no) || {};
     const tariffKey = opexTariffKey(kuyu.eg);
-    const tariff = OPEX_TARIFFS[tariffKey];
+    const fiyatSnapshot = hakedisFiyatSnapshotMap[no] || null;
+    const pricingTariffs = fiyatSnapshot && fiyatSnapshot.tarifeler ? fiyatSnapshot.tarifeler : OPEX_TARIFFS;
+    const pricingFinans = fiyatSnapshot && fiyatSnapshot.finans ? fiyatSnapshot.finans : getAppSettings().finans;
+    const tariff = pricingTariffs[tariffKey] || OPEX_TARIFFS[tariffKey];
     const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
     const excelMetraj = excelDerinlikKuyusu(no) ? (parseFloat(kuyu.der) || 0) : 0;
     const otomatikMetraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
@@ -3189,8 +3576,10 @@ function hakedisBuildRecords(){
     });
     const drilling = bands.reduce((s,b)=>s+b.cost,0);
     const durakMin = durakByKuyu[no] || 0;
-    const waiting = durakMin / 60 * OPEX_WAIT_USD_PER_HOUR;
-    const kio = hakedisOlcumOf(no);
+    const waitRate = ayarNum(pricingFinans.beklemeUsdSaat, OPEX_WAIT_USD_PER_HOUR);
+    const kioRate = ayarNum(pricingFinans.kuyuIciOlcumUsdMetre, HAKEDIS_KIO_RATE_USD);
+    const waiting = durakMin / 60 * waitRate;
+    const kio = hakedisOlcumOf(no, kioRate);
     const kesinti = 0; // Veri modeli kesintiyi desteklemiyor; ileride girilebilir
     const brut = drilling + waiting + kio.usd;
     const net = brut - kesinti;
@@ -3209,8 +3598,11 @@ function hakedisBuildRecords(){
       egim: (kuyu.eg !== undefined && kuyu.eg !== null && kuyu.eg !== '') ? kuyu.eg : null,
       tariffKey, tariffLabel: tariff.label,
       startDepth, metraj, otomatikMetraj, metrajManuel:metrajSecimi.manuelMi, metrajMeta:metrajSecimi, bands, drilling,
-      durakMin, waiting, kesinti, brut, net, avg, verim,
-      kuyuIciMetraj: kio.metraj, kuyuIciUsd: kio.usd,
+      durakMin, waitRate, waiting, kesinti, brut, net, avg, verim,
+      kuyuIciMetraj: kio.metraj, kuyuIciRate:kio.rate, kuyuIciUsd: kio.usd,
+      kdvOrani:ayarNum(pricingFinans.kdvYuzde, HAKEDIS_KDV_ORANI*100)/100,
+      tevkifatOrani:ayarNum(pricingFinans.tevkifatYuzde, HAKEDIS_TEVKIFAT_ORANI*100)/100,
+      fiyatSnapshot,
       durum: hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM,
       meta: hakedisMetaMap[no] || {}
     };
@@ -3331,7 +3723,9 @@ function hakedisAction(no, toDurum){
     const note = window.prompt('Revizyon notu (opsiyonel):', meta.revizeNot || '');
     if(note === null) return; // iptal edildi
     meta.revizeNot = note.trim();
+    delete hakedisFiyatSnapshotMap[no];
   }
+  if(toDurum === 'Kontrol Bekliyor') ensureHakedisFiyatSnapshot(no);
   if(toDurum === 'Onaylandı'){ meta.onaylayan = user; meta.onayTarihi = bugun; }
   if(toDurum === 'Faturaya Aktarıldı'){ meta.faturaTarihi = bugun; }
   if(toDurum === 'Ödendi'){ meta.odemeTarihi = bugun; }
@@ -3352,6 +3746,7 @@ function hakedisUndo(no){
   if(cur === 'Ödendi'){ delete meta.odemeTarihi; }
   if(cur === 'Revize İstendi'){ delete meta.revizeNot; }
   hakedisStatusMap[no] = prev;
+  if(prev === 'Taslak' || prev === 'Revize İstendi') delete hakedisFiyatSnapshotMap[no];
   hakedisMetaMap[no] = meta;
   hakedisSaveStatus();
   renderHakedis();
@@ -3361,7 +3756,7 @@ function hakedisBulkKontrol(){
   let changed = false;
   hakedisSelectedKuyular.forEach(no => {
     const cur = hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM;
-    if(cur === 'Taslak'){ hakedisStatusMap[no] = 'Kontrol Bekliyor'; changed = true; }
+    if(cur === 'Taslak'){ ensureHakedisFiyatSnapshot(no); hakedisStatusMap[no] = 'Kontrol Bekliyor'; changed = true; }
   });
   if(changed){ hakedisSaveStatus(); renderHakedis(); }
 }
@@ -3392,7 +3787,7 @@ function renderHakedisKpisAll(rows){
     ['Toplam Hakediş USD', opexFmtUsd(brutUsd), '', `${rows.length} kuyu`, 'var(--gold)'],
     ['Dolar Kuru', hakedisFmtKur(hakedisKur), 'USD/TL', hakedisKur > 0 ? 'manuel' : 'girilmedi', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
-    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat × $${OPEX_WAIT_USD_PER_HOUR}/sa`, 'var(--warn)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
     ['Net Ödenecek Tutar TL', tl(f.netOdenecekTl), '', note || 'Net + KDV − tevkifat', 'var(--green)']
@@ -3578,7 +3973,7 @@ function hakedisDetailTableHtml(rec){
     <td class="c">—</td>
     <td class="c">—</td>
     <td class="c">${ozetFmt(rec.durakMin,0)} dk</td>
-    <td class="c">$${OPEX_WAIT_USD_PER_HOUR}/sa</td>
+    <td class="c">$${rec.waitRate}/sa</td>
     <td class="c">${opexFmtUsd(rec.waiting)}</td>
     <td class="c">${opexFmtUsd(0)}</td>
     <td class="c">${opexFmtUsd(rec.waiting)}</td>
@@ -3596,7 +3991,7 @@ function hakedisDetailTableHtml(rec){
     <td class="c">—</td>
     <td class="c">—</td>
     <td class="c">${ozetFmt(rec.kuyuIciMetraj,1)}</td>
-    <td class="c">$${HAKEDIS_KIO_RATE_USD}/m</td>
+    <td class="c">$${rec.kuyuIciRate}/m</td>
     <td class="c">—</td>
     <td class="c">—</td>
     <td class="c">—</td>
@@ -3654,10 +4049,10 @@ function renderHakedisKpisMulti(rows){
   hakedisKpiCards([
     ['Seçili Kuyu Sayısı', ozetFmt(rows.length,0), 'kuyu', 'Çoklu seçim', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
-    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat × $${OPEX_WAIT_USD_PER_HOUR}/sa`, 'var(--warn)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(durakMinToplam/60,1)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş Tutarı TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
-    ['KDV (%20) TL', tl(f.kdvTl), '', note || 'Net × 0,20', 'var(--purple)'],
+    ['KDV TL', tl(f.kdvTl), '', note || 'Kuyu fiyat ayarlarına göre', 'var(--purple)'],
     ['Net Ödenecek Tutar TL', tl(f.netOdenecekTl), '', note || 'Net + KDV − tevkifat', 'var(--green)']
   ]);
 }
@@ -3753,15 +4148,19 @@ function hakedisFinansBlockHtml(f, opts){
     : `${ozetFmt(kio.metraj,1)} m`;
   const kioTlLabel = o.kioTitle || 'Kuyu İçi Ölçüm Metrajı';
   const kioTutarTlLabel = o.kioTutarTlLabel || 'Kuyu İçi Ölçüm Tutarı TL';
+  const kioRateText = isFinite(o.kioRate) ? `$${o.kioRate}/m` : 'Kuyu bazlı tarifeye göre';
+  const waitRateText = isFinite(o.waitRate) ? `$${o.waitRate}/sa` : 'Kuyu bazlı tarifeye göre';
+  const kdvLabel = isFinite(o.kdvYuzde) ? `KDV (%${ozetFmt(o.kdvYuzde,0)}) TL` : 'KDV TL';
+  const tevkifatLabel = isFinite(o.tevkifatYuzde) ? `Tevkifat (%${ozetFmt(o.tevkifatYuzde,0)}) TL` : 'Tevkifat TL';
   const kioTl = f.valid ? hakedisFmtTl(kio.usd * hakedisKur) : '<span style="color:var(--text3)">Kur giriniz</span>';
   return `<div class="hakedis-finans">
     ${hakedisFinansRow(kioTlLabel, kioMetrajCell)}
-    ${hakedisFinansRow('Kuyu İçi Ölçüm Birim Fiyatı', `$${HAKEDIS_KIO_RATE_USD}/m`)}
+    ${hakedisFinansRow('Kuyu İçi Ölçüm Birim Fiyatı', kioRateText)}
     ${hakedisFinansRow(o.kioUsdLabel || 'Kuyu İçi Ölçüm Tutarı USD', opexFmtUsd(kio.usd))}
     ${hakedisFinansRow(kioTutarTlLabel, kioTl)}
     <div class="hakedis-finans-sep"></div>
     ${hakedisFinansRow('Hakediş Tutarı USD', opexFmtUsd(f.hakedisUsd))}
-    ${hakedisFinansRow('Duraklama/Bekleme Tutarı USD', `${opexFmtUsd(durak.usd)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${ozetFmt(durak.dk/60,1)} sa × $${OPEX_WAIT_USD_PER_HOUR}/sa)</span>`)}
+    ${hakedisFinansRow('Duraklama/Bekleme Tutarı USD', `${opexFmtUsd(durak.usd)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${ozetFmt(durak.dk/60,1)} sa · ${waitRateText})</span>`)}
     ${hakedisFinansRow('Dolar Kuru (USD/TL)', hakedisFmtKur(hakedisKur))}
     ${hakedisFinansRow('Hakediş Tutarı TL', tl(f.hakedisTl))}
     <div class="hakedis-finans-sep"></div>
@@ -3771,8 +4170,8 @@ function hakedisFinansBlockHtml(f, opts){
     ${hakedisFinansRow('Toplam Kesinti TL', hakedisFmtTl(kes.toplam))}
     <div class="hakedis-finans-sep"></div>
     ${hakedisFinansRow('Net Hakediş Tutarı TL', tl(f.netHakedisTl))}
-    ${hakedisFinansRow('KDV (%20) TL', tl(f.kdvTl))}
-    ${hakedisFinansRow('Tevkifat 4/10 TL', tl(f.tevkifatTutariTl))}
+    ${hakedisFinansRow(kdvLabel, tl(f.kdvTl))}
+    ${hakedisFinansRow(tevkifatLabel, tl(f.tevkifatTutariTl))}
     ${hakedisFinansRow('Tevkifatlı KDV TL', tl(f.tevkifatliKdvTl))}
     ${hakedisFinansRow('Net Ödenecek Tutar TL', tl(f.netOdenecekTl), true)}
   </div>`;
@@ -3794,7 +4193,7 @@ function renderHakedisFinans(mode, data){
         <div><span>FİNANSAL HAKEDİŞ ÖZETİ</span><strong>${esc(rec.no)}</strong></div>
         <small>${editable ? 'Kesinti ve kuyu içi ölçüm kalemleri düzenlenebilir' : 'Onay sonrası kilitli'} · TL bazlı ödeme özeti</small>
       </div>
-      ${hakedisFinansBlockHtml(f, {no:rec.no, durum:rec.durum, kesinti:kes, editable, kio, durak})}
+      ${hakedisFinansBlockHtml(f, {no:rec.no, durum:rec.durum, kesinti:kes, editable, kio, durak, kioRate:rec.kuyuIciRate, waitRate:rec.waitRate, kdvYuzde:rec.kdvOrani*100, tevkifatYuzde:rec.tevkifatOrani*100})}
     </div>`;
     return;
   }
@@ -3894,15 +4293,15 @@ function hakedisDetailCsv(rec){
   rec.bands.forEach(b => {
     csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","${tip}",${Math.round(b.from)},${Math.round(b.to)},"${b.tierLabel}",${b.metre.toFixed(1)},${b.rate},${Math.round(b.cost)},,,,0,${Math.round(b.cost)},${Math.round(b.cost)},Delgi,${rec.durum}\n`;
   });
-  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Bekleme / Duraklama",,,,,,,${Math.round(rec.durakMin)},${OPEX_WAIT_USD_PER_HOUR},${Math.round(rec.waiting)},0,${Math.round(rec.waiting)},${Math.round(rec.waiting)},"${rec.durakMin>0?'Kuyu bazlı duraklama':'Duraklama kaydı yok'}",${rec.durum}\n`;
-  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Kuyu İçi Ölçüm",,,,${rec.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},,,,,0,${Math.round(rec.kuyuIciUsd)},${Math.round(rec.kuyuIciUsd)},"Kuyu içi ölçüm",${rec.durum}\n`;
+  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Bekleme / Duraklama",,,,,,,${Math.round(rec.durakMin)},${rec.waitRate},${Math.round(rec.waiting)},0,${Math.round(rec.waiting)},${Math.round(rec.waiting)},"${rec.durakMin>0?'Kuyu bazlı duraklama':'Duraklama kaydı yok'}",${rec.durum}\n`;
+  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Kuyu İçi Ölçüm",,,,${rec.kuyuIciMetraj.toFixed(1)},${rec.kuyuIciRate},,,,,0,${Math.round(rec.kuyuIciUsd)},${Math.round(rec.kuyuIciUsd)},"Kuyu içi ölçüm",${rec.durum}\n`;
   csv += `TOPLAM,,,,,,,,${rec.metraj.toFixed(1)},,${Math.round(rec.drilling)},${Math.round(rec.durakMin)},,${Math.round(rec.waiting)},${Math.round(rec.kesinti)},${Math.round(rec.brut)},${Math.round(rec.net)},,${rec.durum}\n`;
   // Finansal Hakediş Özeti (TL bazlı)
   const f = hakedisFinansForRec(rec);
   const kes = hakedisKesintiOf(rec.no);
   csv += `\nFİNANSAL HAKEDİŞ ÖZETİ\nAlan,Değer\n`;
   csv += `Kuyu İçi Ölçüm Metrajı (m),${rec.kuyuIciMetraj.toFixed(1)}\n`;
-  csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${HAKEDIS_KIO_RATE_USD}\n`;
+  csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${rec.kuyuIciRate}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı USD,${Math.round(rec.kuyuIciUsd)}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(rec.kuyuIciUsd * hakedisKur, f.valid)}\n`;
   csv += `Sistem Metrajı (m),${rec.otomatikMetraj.toFixed(1)}\n`;
@@ -3917,8 +4316,8 @@ function hakedisDetailCsv(rec){
   csv += `Kesinti (Servis) TL,${kes.servis.toFixed(2)}\n`;
   csv += `Toplam Kesinti TL,${kes.toplam.toFixed(2)}\n`;
   csv += `Net Hakediş Tutarı TL,${hakedisCsvTl(f.netHakedisTl,f.valid)}\n`;
-  csv += `KDV (%20) TL,${hakedisCsvTl(f.kdvTl,f.valid)}\n`;
-  csv += `Tevkifat 4/10 TL,${hakedisCsvTl(f.tevkifatTutariTl,f.valid)}\n`;
+  csv += `KDV (%${(rec.kdvOrani*100).toFixed(2)}) TL,${hakedisCsvTl(f.kdvTl,f.valid)}\n`;
+  csv += `Tevkifat (%${(rec.tevkifatOrani*100).toFixed(2)}) TL,${hakedisCsvTl(f.tevkifatTutariTl,f.valid)}\n`;
   csv += `Tevkifatlı KDV TL,${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)}\n`;
   csv += `Net Ödenecek Tutar TL,${hakedisCsvTl(f.netOdenecekTl,f.valid)}\n`;
   return csv;
@@ -3928,11 +4327,11 @@ function hakedisCsvTl(v, valid){ return valid ? (Number(v)||0).toFixed(2) : ''; 
 
 function hakedisSummaryCsv(rows){
   const kurStr = hakedisKur > 0 ? hakedisKur.toFixed(4) : '';
-  let csv = `Lokasyon,Kuyu,Makine,Firma/Ekip,Sistem Metrajı (m),Hakediş Metrajı (m),Metraj Kaynağı,Metraj Düzeltme Nedeni,Delgi Tutarı USD,Duraklama/Bekleme USD,Kuyu İçi Ölçüm Metrajı (m),Kuyu İçi Ölçüm Birim Fiyatı USD,Kuyu İçi Ölçüm Tutarı USD,Kuyu İçi Ölçüm Tutarı TL,Hakediş Tutarı USD,Dolar Kuru,Hakediş Tutarı TL,Kesinti (Elektrik) TL,Kesinti (Motorin) TL,Kesinti (Servis) TL,Toplam Kesinti TL,Net Hakediş TL,KDV (%20) TL,Tevkifat 4/10 TL,Tevkifatlı KDV TL,Net Ödenecek TL,Hakediş Durumu\n`;
+  let csv = `Lokasyon,Kuyu,Makine,Firma/Ekip,Sistem Metrajı (m),Hakediş Metrajı (m),Metraj Kaynağı,Metraj Düzeltme Nedeni,Delgi Tutarı USD,Duraklama/Bekleme USD,Kuyu İçi Ölçüm Metrajı (m),Kuyu İçi Ölçüm Birim Fiyatı USD,Kuyu İçi Ölçüm Tutarı USD,Kuyu İçi Ölçüm Tutarı TL,Hakediş Tutarı USD,Dolar Kuru,Hakediş Tutarı TL,Kesinti (Elektrik) TL,Kesinti (Motorin) TL,Kesinti (Servis) TL,Toplam Kesinti TL,Net Hakediş TL,KDV TL,Tevkifat TL,Tevkifatlı KDV TL,Net Ödenecek TL,Hakediş Durumu\n`;
   rows.forEach(r => {
     const f = hakedisFinansForRec(r);
     const kes = hakedisKesintiOf(r.no);
-    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.otomatikMetraj.toFixed(1)},${r.metraj.toFixed(1)},${r.metrajManuel?'Manuel':'Otomatik'},"${String(r.metrajMeta.neden||'').replace(/"/g,'""')}",${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${HAKEDIS_KIO_RATE_USD},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatTutariTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
+    csv += `"${r.locGroup}",${r.no},"${r.makine}","${r.firma}",${r.otomatikMetraj.toFixed(1)},${r.metraj.toFixed(1)},${r.metrajManuel?'Manuel':'Otomatik'},"${String(r.metrajMeta.neden||'').replace(/"/g,'""')}",${Math.round(r.drilling)},${Math.round(r.waiting)},${r.kuyuIciMetraj.toFixed(1)},${r.kuyuIciRate},${Math.round(r.kuyuIciUsd)},${hakedisCsvTl(r.kuyuIciUsd*hakedisKur,f.valid)},${Math.round(r.brut)},${kurStr},${hakedisCsvTl(f.hakedisTl,f.valid)},${kes.elektrik.toFixed(2)},${kes.motorin.toFixed(2)},${kes.servis.toFixed(2)},${kes.toplam.toFixed(2)},${hakedisCsvTl(f.netHakedisTl,f.valid)},${hakedisCsvTl(f.kdvTl,f.valid)},${hakedisCsvTl(f.tevkifatTutariTl,f.valid)},${hakedisCsvTl(f.tevkifatliKdvTl,f.valid)},${hakedisCsvTl(f.netOdenecekTl,f.valid)},${r.durum}\n`;
   });
   const ft = hakedisFinansForRows(rows);
   const kt = { elektrik:0, motorin:0, servis:0, toplam:0 };
@@ -3952,7 +4351,7 @@ function exportHakedis(){
   const records = hakedisBuildRecords();
   const stamp = new Date().toLocaleDateString('tr-TR');
   const kurLine = `Dolar Kuru (USD/TL): ${hakedisKur > 0 ? hakedisFmtKur(hakedisKur) : 'girilmedi'}`;
-  const head = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ`;
+  const head = appReportHead();
   const sel = hakedisSelectedKuyular.filter(no => records.some(r => r.no === no));
 
   // A) Tek kuyu → detaylı OPEX maliyet tablosu
@@ -3977,9 +4376,10 @@ function exportHakedis(){
     const gk = hakedisTopluKesintiToplam();
     const kioMetrajT = rows.reduce((s,r)=>s+(r.kuyuIciMetraj||0),0);
     const kioUsdT = rows.reduce((s,r)=>s+(r.kuyuIciUsd||0),0);
+    const kioRates = [...new Set(rows.map(r=>r.kuyuIciRate))];
     csv += `\nFİNANSAL HAKEDİŞ ÖZETİ (TEK KALEM KESİNTİ)\nAlan,Değer\n`;
     csv += `Toplam Kuyu İçi Ölçüm Metrajı (m),${kioMetrajT.toFixed(1)}\n`;
-    csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${HAKEDIS_KIO_RATE_USD}\n`;
+    csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${kioRates.length===1?kioRates[0]:'Kuyu bazlı'}\n`;
     csv += `Toplam Kuyu İçi Ölçüm Tutarı USD,${Math.round(kioUsdT)}\n`;
     csv += `Toplam Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(kioUsdT*hakedisKur,gf.valid)}\n`;
     csv += `Hakediş Tutarı USD,${Math.round(gf.hakedisUsd)}\n`;
@@ -3990,8 +4390,8 @@ function exportHakedis(){
     csv += `Kesinti (Servis) TL,${gk.servis.toFixed(2)}\n`;
     csv += `Toplam Kesinti TL,${gk.toplam.toFixed(2)}\n`;
     csv += `Net Hakediş Tutarı TL,${hakedisCsvTl(gf.netHakedisTl,gf.valid)}\n`;
-    csv += `KDV (%20) TL,${hakedisCsvTl(gf.kdvTl,gf.valid)}\n`;
-    csv += `Tevkifat 4/10 TL,${hakedisCsvTl(gf.tevkifatTutariTl,gf.valid)}\n`;
+    csv += `KDV TL,${hakedisCsvTl(gf.kdvTl,gf.valid)}\n`;
+    csv += `Tevkifat TL,${hakedisCsvTl(gf.tevkifatTutariTl,gf.valid)}\n`;
     csv += `Tevkifatlı KDV TL,${hakedisCsvTl(gf.tevkifatliKdvTl,gf.valid)}\n`;
     csv += `Net Ödenecek Tutar TL,${hakedisCsvTl(gf.netOdenecekTl,gf.valid)}\n`;
     rows.forEach(r => { csv += `\nDETAY · ${r.no}\n` + hakedisDetailCsv(r); });
@@ -4423,7 +4823,7 @@ function exportAylikRapor(){
   let toplamDelgi = 0;
   ayRecs.forEach(r => { toplamDelgi += (parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0); });
   const topDurak = ayDurak.reduce((s,d)=>s+(parseFloat(d.dk)||0),0);
-  let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nAYLIK SONDAJ RAPORU · ${ayAdi}\nRapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}\n\n`;
+  let csv = `${appReportHead()}\nAYLIK SONDAJ RAPORU · ${ayAdi}\nRapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}\n\n`;
   csv += `ÖZET\nToplam Delgi (m),${toplamDelgi.toFixed(2)}\nAktif Kuyu,${db.kuyular.filter(k=>isAktifKuyu(k)).length}\nTamamlanan Kuyu,${db.kuyular.filter(k=>!isAktifKuyu(k)).length}\nToplam Duraklama (dk),${topDurak}\nToplam Duraklama (sa),${(topDurak/60).toFixed(2)}\n\n`;
   csv += `MAKİNE BAZLI PERFORMANS\nMakine,Aktif Kuyu,Aylık Delgi (m),Duraklama (dk)\n`;
   MAKINELER.forEach(m => {
@@ -4449,7 +4849,7 @@ function exportGunlukOzet(){
   const ayAdi = ayLbl.options[ayLbl.selectedIndex].text;
   const ayRecs = db.gunluk.filter(r => ayFiltre(r.tarih));
   const tarihler = [...new Set(ayRecs.map(r=>r.tarih))].sort();
-  let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nGÜNLÜK İLERLEME ÖZETİ · ${ayAdi}\n\n`;
+  let csv = `${appReportHead()}\nGÜNLÜK İLERLEME ÖZETİ · ${ayAdi}\n\n`;
   csv += `Tarih,${MAKINELER.join(',')},Günlük Toplam (m)\n`;
   tarihler.forEach(t => {
     let gunTop = 0;
@@ -4471,7 +4871,7 @@ function exportKuyuFormu(){
   const ayLbl = document.getElementById('sel-ay');
   const ayAdi = ayLbl.options[ayLbl.selectedIndex].text;
   const kuyular = db.kuyular.filter(k => (k.bas && k.bas.startsWith(aktifAy)) || isAktifKuyu(k));
-  let csv = `GÜMÜŞTAŞ MADENCİLİK · BOLKAR İŞLETMESİ\nKUYU TEKNİK VERİ FORMU · ${ayAdi}\n\n`;
+  let csv = `${appReportHead()}\nKUYU TEKNİK VERİ FORMU · ${ayAdi}\n\n`;
   csv += `Kuyu No,Makine,Saha,Mevkii,Başlangıç,Bitiş,Azimut (°),Eğim (°),Planlanan (m),Toplam Delgi (m),Bitiş Kotu (m),Yer Su (m),Su Basıncı (Bar),Durum\n`;
   kuyular.forEach(k => {
     const derinlik = kuyuDerinlikMetraj(k);
@@ -4555,7 +4955,7 @@ function exportAy(){
   const ayRecs = db.gunluk.filter(r=>ayFiltre(r.tarih));
   const ayDurak = db.duraklamalar.filter(d=>ayFiltre(d.tarih));
 
-  let csv = `GÜMÜŞTAŞ MADENCİLİK · DDH TAKİP · ${ayAdi} Export\n\n`;
+  let csv = `${appReportHead()} · ${getAppSettings().firma.uygulamaAdi.toLocaleUpperCase('tr-TR')} · ${ayAdi} Export\n\n`;
   csv += `GÜNLÜK DELGİ KAYITLARI\n`;
   csv += `Makine,Tarih,Vardiya,Kuyu No,İlerleme (m),Not\n`;
   ayRecs.forEach(r=>{
@@ -4698,6 +5098,11 @@ window.openHakedisMetraj = openHakedisMetraj;
 window.closeHakedisMetraj = closeHakedisMetraj;
 window.saveHakedisMetraj = saveHakedisMetraj;
 window.resetHakedisMetraj = resetHakedisMetraj;
+window.renderAyarlar = renderAyarlar;
+window.addAyarMakine = addAyarMakine;
+window.saveAppSettings = saveAppSettings;
+window.loadDefaultSettingsForm = loadDefaultSettingsForm;
+window.loadPreviousSettingsForm = loadPreviousSettingsForm;
 document.addEventListener('click', hakedisOutsideClick);
 
 // ── INIT ────────────────────────────────────────────────────
@@ -4711,13 +5116,14 @@ db.gunluk  = PRELOADED_GUNLUK;
 normalizeDbMakineAdlari();
 nextId = PRELOADED_NEXTID;
 ensureNextId();
+applyRuntimeSettings(readCachedAppSettings() || DEFAULT_APP_SETTINGS);
 
 // Auth durumunu dinle
 db.kuyular = PRELOADED_KUYULAR.map(cloneKuyu);
 normalizeDbMakineAdlari();
 ensureNextId();
 // sel-ay artık header'dan kaldırıldı; aktifAy ve seciliAy değişkenlerle yönetiliyor
-window.aktifMakine = 'GS-200';
+window.aktifMakine = aktifMakine;
 
 onAuthStateChanged(fbAuth, (user) => {
   if(user){
@@ -4737,13 +5143,7 @@ onAuthStateChanged(fbAuth, (user) => {
 // SONDAJ ANİMASYON MOTORU v2 — Canvas Tabanlı, Profesyonel
 // ══════════════════════════════════════════════════════════════
 
-const MAKINE_RENKLER_V2 = {
-  'GS-200':       '#e9cd53',
-  'DBC-U6':       '#4f7d32',
-  'BATUHAN-600X': '#f47721',
-  'GS-600':       '#1d4f8f',
-  'BDU-600':      '#231f20',
-};
+const MAKINE_RENKLER_V2 = MAKINE_RENK;
 
 // ── CANVAS DRAWING v3 — HIGH DPI ────────────────────────────────
 const DDH_W = 110, DDH_H = 125;  // CSS display size
