@@ -3008,7 +3008,7 @@ let OPEX_TARIFFS = {
 };
 
 function opexFmtUsd(n){
-  return '$' + (Math.round(n || 0)).toLocaleString('tr-TR');
+  return '$' + (Number(n) || 0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
 function opexFindKuyu(no){
@@ -4291,24 +4291,24 @@ function hakedisDetailCsv(rec){
   let csv = `Kuyu,Lokasyon,Makine,Firma/Ekip,Delgi Tipi / Eğim,Derinlik Başlangıç,Derinlik Bitiş,Derinlik Aralığı,Metraj (m),Birim Fiyat ($/m),Delgi Tutarı ($),Duraklama Süresi (dk),Duraklama Birim Fiyatı ($/sa),Duraklama Tutarı ($),Kesinti ($),Brüt Hakediş ($),Net Hakediş ($),Açıklama,Durum\n`;
   const tip = `${rec.tariffLabel} / ${rec.egim===null?'-':rec.egim+'°'}`;
   rec.bands.forEach(b => {
-    csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","${tip}",${Math.round(b.from)},${Math.round(b.to)},"${b.tierLabel}",${b.metre.toFixed(1)},${b.rate},${Math.round(b.cost)},,,,0,${Math.round(b.cost)},${Math.round(b.cost)},Delgi,${rec.durum}\n`;
+    csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","${tip}",${Math.round(b.from)},${Math.round(b.to)},"${b.tierLabel}",${b.metre.toFixed(1)},${b.rate},${b.cost.toFixed(2)},,,,0,${b.cost.toFixed(2)},${b.cost.toFixed(2)},Delgi,${rec.durum}\n`;
   });
-  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Bekleme / Duraklama",,,,,,,${Math.round(rec.durakMin)},${rec.waitRate},${Math.round(rec.waiting)},0,${Math.round(rec.waiting)},${Math.round(rec.waiting)},"${rec.durakMin>0?'Kuyu bazlı duraklama':'Duraklama kaydı yok'}",${rec.durum}\n`;
-  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Kuyu İçi Ölçüm",,,,${rec.kuyuIciMetraj.toFixed(1)},${rec.kuyuIciRate},,,,,0,${Math.round(rec.kuyuIciUsd)},${Math.round(rec.kuyuIciUsd)},"Kuyu içi ölçüm",${rec.durum}\n`;
-  csv += `TOPLAM,,,,,,,,${rec.metraj.toFixed(1)},,${Math.round(rec.drilling)},${Math.round(rec.durakMin)},,${Math.round(rec.waiting)},${Math.round(rec.kesinti)},${Math.round(rec.brut)},${Math.round(rec.net)},,${rec.durum}\n`;
+  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Bekleme / Duraklama",,,,,,,${Math.round(rec.durakMin)},${rec.waitRate},${rec.waiting.toFixed(2)},0,${rec.waiting.toFixed(2)},${rec.waiting.toFixed(2)},"${rec.durakMin>0?'Kuyu bazlı duraklama':'Duraklama kaydı yok'}",${rec.durum}\n`;
+  csv += `${rec.no},"${rec.locGroup}","${rec.makine}","${rec.firma}","Kuyu İçi Ölçüm",,,,${rec.kuyuIciMetraj.toFixed(1)},${rec.kuyuIciRate},,,,,0,${rec.kuyuIciUsd.toFixed(2)},${rec.kuyuIciUsd.toFixed(2)},"Kuyu içi ölçüm",${rec.durum}\n`;
+  csv += `TOPLAM,,,,,,,,${rec.metraj.toFixed(1)},,${rec.drilling.toFixed(2)},${Math.round(rec.durakMin)},,${rec.waiting.toFixed(2)},${rec.kesinti.toFixed(2)},${rec.brut.toFixed(2)},${rec.net.toFixed(2)},,${rec.durum}\n`;
   // Finansal Hakediş Özeti (TL bazlı)
   const f = hakedisFinansForRec(rec);
   const kes = hakedisKesintiOf(rec.no);
   csv += `\nFİNANSAL HAKEDİŞ ÖZETİ\nAlan,Değer\n`;
   csv += `Kuyu İçi Ölçüm Metrajı (m),${rec.kuyuIciMetraj.toFixed(1)}\n`;
   csv += `Kuyu İçi Ölçüm Birim Fiyatı (USD/m),${rec.kuyuIciRate}\n`;
-  csv += `Kuyu İçi Ölçüm Tutarı USD,${Math.round(rec.kuyuIciUsd)}\n`;
+  csv += `Kuyu İçi Ölçüm Tutarı USD,${rec.kuyuIciUsd.toFixed(2)}\n`;
   csv += `Kuyu İçi Ölçüm Tutarı TL,${hakedisCsvTl(rec.kuyuIciUsd * hakedisKur, f.valid)}\n`;
   csv += `Sistem Metrajı (m),${rec.otomatikMetraj.toFixed(1)}\n`;
   csv += `Hakediş Metrajı (m),${rec.metraj.toFixed(1)}\n`;
   csv += `Metraj Kaynağı,${rec.metrajManuel ? 'Manuel' : 'Otomatik'}\n`;
   csv += `Metraj Düzeltme Nedeni,"${String(rec.metrajMeta.neden||'').replace(/"/g,'""')}"\n`;
-  csv += `Hakediş Tutarı USD,${Math.round(f.hakedisUsd)}\n`;
+  csv += `Hakediş Tutarı USD,${f.hakedisUsd.toFixed(2)}\n`;
   csv += `Dolar Kuru,${hakedisKur > 0 ? hakedisKur.toFixed(4) : ''}\n`;
   csv += `Hakediş Tutarı TL,${hakedisCsvTl(f.hakedisTl,f.valid)}\n`;
   csv += `Kesinti (Elektrik) TL,${kes.elektrik.toFixed(2)}\n`;
