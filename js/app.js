@@ -3949,7 +3949,7 @@ function hakedisDetailTableHtml(rec){
     <td class="c">${ozetFmt(b.to,0)}</td>
     <td class="c">${esc(b.tierLabel)}</td>
     <td class="c">${ozetFmt(b.metre,1)}</td>
-    <td class="c">$${ozetFmt(b.rate,0)}/m</td>
+    <td class="c">$${ozetFmt(b.rate,2)}/m</td>
     <td class="c">${opexFmtUsd(b.cost)}</td>
     <td class="c">—</td>
     <td class="c">—</td>
