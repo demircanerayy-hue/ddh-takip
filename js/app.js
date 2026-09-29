@@ -3136,7 +3136,7 @@ function ozetOpexSummary(period){
   const waitMinutes = (db.duraklamalar || [])
     .filter(d => ozetInPeriod(d.tarih, period))
     .reduce((s,d) => s + (parseFloat(d.dk)||0), 0);
-  const waiting = waitMinutes / 60 * OPEX_WAIT_USD_PER_HOUR;
+  const waiting = duraklamaSaat(waitMinutes) * OPEX_WAIT_USD_PER_HOUR;
   return {
     metres,
     drilling,
@@ -3306,7 +3306,7 @@ function hakedisOlcumOf(no, rateUsd){
   return { metraj, rate, usd: metraj * rate };
 }
 
-function hakedisDurakSaat(dakika){
+function duraklamaSaat(dakika){
   return Number((Math.max(0, Number(dakika) || 0) / 60).toFixed(2));
 }
 
@@ -3582,7 +3582,7 @@ function hakedisBuildRecords(){
     const durakMin = durakByKuyu[no] || 0;
     const waitRate = ayarNum(pricingFinans.beklemeUsdSaat, OPEX_WAIT_USD_PER_HOUR);
     const kioRate = ayarNum(pricingFinans.kuyuIciOlcumUsdMetre, HAKEDIS_KIO_RATE_USD);
-    const waiting = hakedisDurakSaat(durakMin) * waitRate;
+    const waiting = duraklamaSaat(durakMin) * waitRate;
     const kio = hakedisOlcumOf(no, kioRate);
     const kesinti = 0; // Veri modeli kesintiyi desteklemiyor; ileride girilebilir
     const brut = drilling + waiting + kio.usd;
@@ -3791,7 +3791,7 @@ function renderHakedisKpisAll(rows){
     ['Toplam Hakediş USD', opexFmtUsd(brutUsd), '', `${rows.length} kuyu`, 'var(--gold)'],
     ['Dolar Kuru', hakedisFmtKur(hakedisKur), 'USD/TL', hakedisKur > 0 ? 'manuel' : 'girilmedi', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
-    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(hakedisDurakSaat(durakMinToplam),2)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(duraklamaSaat(durakMinToplam),2)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
     ['Net Ödenecek Tutar TL', tl(f.netOdenecekTl), '', note || 'Net + KDV − tevkifat', 'var(--green)']
@@ -4053,7 +4053,7 @@ function renderHakedisKpisMulti(rows){
   hakedisKpiCards([
     ['Seçili Kuyu Sayısı', ozetFmt(rows.length,0), 'kuyu', 'Çoklu seçim', 'var(--blue)'],
     ['Toplam Hakediş TL', tl(f.hakedisTl), '', note || 'Brüt USD × kur', 'var(--gold)'],
-    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(hakedisDurakSaat(durakMinToplam),2)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
+    ['Toplam Duraklama/Bekleme Tutarı', opexFmtUsd(waitingToplam), '', `${ozetFmt(duraklamaSaat(durakMinToplam),2)} saat · kuyu tarifelerine göre`, 'var(--warn)'],
     ['Toplam Kesinti TL', hakedisFmtTl(f.kesintiTl), '', 'Elektrik+Motorin+Servis', 'var(--warn)'],
     ['Net Hakediş Tutarı TL', tl(f.netHakedisTl), '', note || 'Hakediş − kesinti', 'var(--green)'],
     ['KDV TL', tl(f.kdvTl), '', note || 'Kuyu fiyat ayarlarına göre', 'var(--purple)'],
@@ -4164,7 +4164,7 @@ function hakedisFinansBlockHtml(f, opts){
     ${hakedisFinansRow(kioTutarTlLabel, kioTl)}
     <div class="hakedis-finans-sep"></div>
     ${hakedisFinansRow('Hakediş Tutarı USD', opexFmtUsd(f.hakedisUsd))}
-    ${hakedisFinansRow('Duraklama/Bekleme Tutarı USD', `${opexFmtUsd(durak.usd)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${ozetFmt(hakedisDurakSaat(durak.dk),2)} sa · ${waitRateText})</span>`)}
+    ${hakedisFinansRow('Duraklama/Bekleme Tutarı USD', `${opexFmtUsd(durak.usd)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${ozetFmt(duraklamaSaat(durak.dk),2)} sa · ${waitRateText})</span>`)}
     ${hakedisFinansRow('Dolar Kuru (USD/TL)', hakedisFmtKur(hakedisKur))}
     ${hakedisFinansRow('Hakediş Tutarı TL', tl(f.hakedisTl))}
     <div class="hakedis-finans-sep"></div>
