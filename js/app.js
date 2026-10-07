@@ -1,5 +1,5 @@
 import { PRELOADED_KUYULAR, PRELOADED_GUNLUK, PRELOADED_DURAKLAMALAR, PRELOADED_NEXTID } from './data.js';
-import { RigAnim } from './ddhRigAnim.js?v=rig-v3-0-1';
+import { RigAnim } from './ddhRigAnim.js?v=rig-v3-0-2';
 // ── SABITLER ────────────────────────────────────────────────
 const DEFAULT_APP_SETTINGS = {
   version: 1,

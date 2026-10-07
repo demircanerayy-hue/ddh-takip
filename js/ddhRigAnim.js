@@ -238,10 +238,9 @@
       const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
       if (this.canvas.width !== w) this.canvas.width = w;
       if (this.canvas.height !== h) this.canvas.height = h;
-      this.scaleX = cssW / LOGICAL_W;
-      this.scaleY = cssH / LOGICAL_H;
-      this.offsetX = 0;
-      this.offsetY = 0;
+      this.scaleX = this.scaleY = Math.min(cssW / LOGICAL_W, cssH / LOGICAL_H);
+      this.offsetX = (cssW - LOGICAL_W * this.scaleX) / 2;
+      this.offsetY = (cssH - LOGICAL_H * this.scaleY) / 2;
       this._staticDirty = true;
       this.renderFrame();
     }
