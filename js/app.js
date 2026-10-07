@@ -5116,6 +5116,7 @@ window.saveHakedisMetraj = saveHakedisMetraj;
 window.resetHakedisMetraj = resetHakedisMetraj;
 window.renderAyarlar = renderAyarlar;
 window.addAyarMakine = addAyarMakine;
+window.removeAyarMakine = removeAyarMakine;
 window.saveAppSettings = saveAppSettings;
 window.loadDefaultSettingsForm = loadDefaultSettingsForm;
 window.loadPreviousSettingsForm = loadPreviousSettingsForm;
