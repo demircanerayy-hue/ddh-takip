@@ -958,22 +958,19 @@ th:hover .sort-ico{opacity:1;}
 /* Canvas zone */
 .ddh-canvas-zone {
   display: flex;
-  justify-content: center;
   align-items: stretch;
   height: 318px;
   margin: 4px 0 9px;
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(248,250,252,.95), rgba(226,232,240,.72));
+  background: #f7fafb;
   border: 1px solid rgba(0,0,0,.06);
   overflow: hidden;
 }
 canvas.ddh-rig-canvas {
   display: block;
-  flex: 0 1 238px;
+  flex: 1 1 0;
   width: 100%;
   min-width: 0;
-  max-width: 238px;
   height: 100%;
   image-rendering: auto;
 }
