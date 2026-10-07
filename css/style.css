@@ -1767,7 +1767,7 @@ canvas.ddh-rig-canvas {
 .ayar-card{margin-bottom:14px;}
 .ayar-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .ayar-machine-head,.ayar-machine-row{
-  display:grid;grid-template-columns:minmax(150px,1.1fr) 64px 130px minmax(180px,1.4fr) 78px 100px;
+  display:grid;grid-template-columns:minmax(150px,1.1fr) 64px 130px minmax(180px,1.4fr) minmax(150px,auto);
   gap:9px;align-items:center;
 }
 .ayar-machine-head{
@@ -1775,7 +1775,8 @@ canvas.ddh-rig-canvas {
 }
 .ayar-machine-row{padding:8px;border-top:1px solid var(--border);}
 .ayar-machine-row:first-child{border-top:0;}
-.ayar-machine-delete{padding:6px 8px;white-space:nowrap;}
+.ayar-machine-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.ayar-machine-delete{padding:6px 10px;white-space:nowrap;}
 .ayar-color{width:44px;height:32px;padding:2px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);cursor:pointer;}
 .ayar-switch{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:var(--text2);cursor:pointer;}
 .ayar-switch input{accent-color:var(--green);}

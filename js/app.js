@@ -1231,8 +1231,10 @@ function ayarMakineRowHtml(m){
     <input class="ayar-color" data-field="renk" type="color" value="${esc(m.renk || '#606363')}" title="Makine rengi">
     <input class="fi" data-field="max" type="number" min="1" step="1" value="${esc(m.vardiyaMaxMetraj || 60)}" title="Vardiya maksimum metrajı">
     <input class="fi" data-field="aliases" value="${esc(aliases)}" placeholder="Eski adlar, virgülle">
-    <label class="ayar-switch"><input data-field="aktif" type="checkbox" ${m.aktif ? 'checked' : ''}><span>Aktif</span></label>
-    <button class="btn btn-d ayar-machine-delete" type="button" aria-label="${esc(m.ad ? `${m.ad} makinesini sil` : 'Makineyi sil')}" onclick="removeAyarMakine(this)">Makineyi Sil</button>
+    <div class="ayar-machine-actions">
+      <label class="ayar-switch"><input data-field="aktif" type="checkbox" ${m.aktif ? 'checked' : ''}><span>Aktif</span></label>
+      <button class="btn btn-d ayar-machine-delete" type="button" aria-label="${esc(m.ad ? `${m.ad} makinesini sil` : 'Makineyi sil')}" onclick="removeAyarMakine(this)">Sil</button>
+    </div>
   </div>`;
 }
 
