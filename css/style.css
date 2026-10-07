@@ -882,8 +882,6 @@ th:hover .sort-ico{opacity:1;}
 .ddh-anim-grid {
   display: grid;
   width: 100%;
-  max-width: 1148px;
-  margin-inline: auto;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
@@ -897,8 +895,6 @@ th:hover .sort-ico{opacity:1;}
 /* ── RIG CARD ─────────────────────────────────────────── */
 .ddh-rig-card {
   width: 100%;
-  max-width: 220px;
-  justify-self: center;
   background:
     linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,248,251,.96));
   border: 1px solid rgba(0,0,0,.08);
@@ -959,7 +955,7 @@ th:hover .sort-ico{opacity:1;}
 .ddh-canvas-zone {
   display: flex;
   align-items: stretch;
-  height: 318px;
+  aspect-ratio: 200 / 320;
   margin: 4px 0 9px;
   border-radius: 10px;
   background: #f7fafb;
