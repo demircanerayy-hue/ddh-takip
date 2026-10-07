@@ -946,8 +946,7 @@ th:hover .sort-ico{opacity:1;}
 /* Canvas zone */
 .ddh-canvas-zone {
   display: flex;
-  justify-content: center;
-  align-items: flex-end;
+  align-items: stretch;
   height: 318px;
   margin: 4px 0 9px;
   border-radius: 10px;
@@ -958,9 +957,10 @@ th:hover .sort-ico{opacity:1;}
 }
 canvas.ddh-rig-canvas {
   display: block;
+  flex: 1;
   width: 100%;
-  max-width: 238px;
-  height: 312px;
+  min-width: 0;
+  height: 100%;
   image-rendering: auto;
 }
 

@@ -1,17 +1,14 @@
-/* ============================================================
-   DDH TAKIP — Rig Animation Engine v2.1
-   RigAnim.mount(canvas, options) — v1/v2 API uyumlu
-   v2.1 yenilikleri:
-   - OPERASYON YAŞAM DÖNGÜSÜ: mast kurulumu (hidrolik silindirle),
-     kuyu bitince tij çekme (trip-out), mast indirme, paletlerle
-     yeni lokasyona yürüyüş, yeniden kurulum (autoCycle)
-   - ÇAMUR SİSTEMİ: çamur havuzu, emiş + basma hortumu (kafa ile
-     birlikte hareket eder), kuyudan dönen kırıntılı su akışı
-   - OPERATÖR: delgide panelde, tij ekmede mastta, karot alımında
-     tepsiye yürür, durakta makineye yaslanır
-   options: { status, machineName, color, showDepth, initialDepth,
-              plannedDepth, autoAdvance, autoCycle }
-   ============================================================ */
+/**
+ * DDH TAKIP — Rig Animation Engine 3.0
+ * Dependency-free Canvas 2D renderer. ES module, browser only.
+ * Compatible: mount, start, pause, resume, destroy, resize, setStatus,
+ * setDepth, setPlannedDepth, getDepth, newHole.
+ * New: setOptions, setSpeed, getState, theme, quality, speed,
+ * coreEveryRods, onDepthChange, onPhaseChange, onComplete, onNewHole.
+ * Events: rig:depth, rig:phase, rig:complete, rig:newhole (on canvas).
+ * autoAdvance is illustrative simulation; use false for real telemetry.
+ * Cross-section is schematic, not a geological model or scaled log.
+ */
 (function (global) {
   "use strict";
 
@@ -65,6 +62,23 @@
     return `rgb(${m(c.r)},${m(c.g)},${m(c.b)})`;
   };
   const normalizeStatus = s => (STATES.has(s) ? s : "pasif");
+  const finite = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
+  const PALETTES = {
+    light: { sky: "#f7fafb", horizon: "#e2ecee", mountain: "#c9d9da", far: "#e0e9eb", ground: "#b4c2be", rock: ["#d3cdb8", "#aebbbb", "#889aa0"], ink: "#20333b", muted: "#647b83", panel: "rgba(255,255,255,.86)", line: "rgba(43,70,77,.13)", water: "#539da8" },
+    dark: { sky: "#101d27", horizon: "#1c3440", mountain: "#314852", far: "#223843", ground: "#506462", rock: ["#4a5148", "#354751", "#263b47"], ink: "#e6f0f1", muted: "#90a9b2", panel: "rgba(12,25,35,.88)", line: "rgba(174,202,212,.14)", water: "#4ca9b9" }
+  };
+  function line(c, pts, color, width = 1) {
+    c.strokeStyle = color; c.lineWidth = width; c.beginPath();
+    c.moveTo(pts[0][0], pts[0][1]); for (const pt of pts.slice(1)) c.lineTo(pt[0], pt[1]); c.stroke();
+  }
+  function poly(c, pts, color) {
+    c.fillStyle = color; c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
+    for (const pt of pts.slice(1)) c.lineTo(pt[0],pt[1]); c.closePath(); c.fill();
+  }
+  function box(c, x,y,w,h,r,color) { c.fillStyle=color; rr(c,x,y,w,h,r); c.fill(); }
+  function bolt(c,x,y,r=1) { c.fillStyle="#82949d"; c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill(); }
+  function label(c,t,x,y,size,color,weight=500) { c.font=`${weight} ${size}px system-ui, sans-serif`;c.fillStyle=color;c.fillText(t,x,y); }
+  function fitText(c,t,width) { t=String(t);if(c.measureText(t).width<=width)return t;while(t.length&&c.measureText(t+"…").width>width)t=t.slice(0,-1);return t+"…"; }
 
   function seedFrom(name) {
     let h = 2166136261;
@@ -78,51 +92,35 @@
     };
   }
 
-  const REDUCED = typeof matchMedia === "function" &&
-    matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  /* ---------- paylaşımlı ticker ---------- */
+  const motionQuery = typeof global.matchMedia === "function" ? global.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  let REDUCED = !!(motionQuery && motionQuery.matches);
   const Ticker = {
-    set: new Set(),
-    raf: 0,
-    last: 0,
-    add(c) {
-      this.set.add(c);
-      if (!this.raf && !REDUCED) {
-        this.last = performance.now();
-        this.raf = requestAnimationFrame(this.tick);
-      }
+    set: new Set(), raf: 0, last: 0,
+    wake() {
+      if (this.raf || REDUCED || (typeof document !== "undefined" && document.hidden)) return;
+      if (![...this.set].some(c => c.visible && !c.destroyed)) return;
+      this.last = performance.now(); this.raf = requestAnimationFrame(this.tick);
     },
-    remove(c) {
-      this.set.delete(c);
-      if (!this.set.size && this.raf) {
-        cancelAnimationFrame(this.raf);
-        this.raf = 0;
-      }
-    },
-    tick: (now) => {
+    add(c) { this.set.add(c); this.wake(); },
+    remove(c) { this.set.delete(c); if (!this.set.size) this.stop(); },
+    stop() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = 0; },
+    tick(now) {
       Ticker.raf = 0;
-      const dt = clamp((now - Ticker.last) / 1000, 0, 0.05);
-      Ticker.last = now;
-      for (const c of Ticker.set) c.frame(dt);
-      if (Ticker.set.size) Ticker.raf = requestAnimationFrame(Ticker.tick);
+      const dt = clamp((now - Ticker.last) / 1000, 0, 0.05); Ticker.last = now;
+      for (const c of Ticker.set) if (c.visible && !c.destroyed) c.frame(dt);
+      if (!REDUCED && !document.hidden && [...Ticker.set].some(c => c.visible && !c.destroyed)) Ticker.raf = requestAnimationFrame(Ticker.tick);
     }
   };
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        if (Ticker.raf) { cancelAnimationFrame(Ticker.raf); Ticker.raf = 0; }
-      } else if (Ticker.set.size && !Ticker.raf && !REDUCED) {
-        Ticker.last = performance.now();
-        Ticker.raf = requestAnimationFrame(Ticker.tick);
-      }
-    });
-  }
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => document.hidden ? Ticker.stop() : Ticker.wake());
+  if (motionQuery && motionQuery.addEventListener) motionQuery.addEventListener("change", e => {
+    REDUCED = e.matches;
+    if (REDUCED) { Ticker.stop(); for (const c of Ticker.set) c.renderFrame(); } else Ticker.wake();
+  });
   const IO = (typeof IntersectionObserver !== "undefined")
     ? new IntersectionObserver(entries => {
         for (const e of entries) {
           const c = e.target.__rigController;
-          if (c) c.visible = e.isIntersecting;
+          if (c) { c.visible = e.isIntersecting; if (c.visible) Ticker.wake(); }
         }
       }, { threshold: 0.02 })
     : null;
@@ -134,37 +132,36 @@
     wl_down:  { dur: 0.55 },
     wl_grab:  { dur: 0.3 },
     wl_up:    { dur: 1.1 },
-    rodswing: { dur: 0.9 },
+    core_transfer: { dur: 3.6 },
+    rodswing: { dur: 1.1 },
     clamp:    { dur: 0.35 }
   };
   const HEAD_BOT = -56;
 
   // operasyon (yaşam döngüsü) faz etiketleri — HUD'da gösterilir
-  const OP_LABEL = {
-    work: null,
-    tripout: "TİJ ÇEKİLİYOR",
-    lower: "MAST İNDİRİLİYOR",
-    walkout: "YENİ LOKASYONA",
-    walkin: "YENİ LOKASYONA",
-    raise: "MAST KURULUYOR",
-    done: "TAMAMLANDI"
-  };
-
   class RigController {
     constructor(canvas, options = {}) {
       this.canvas = canvas;
       this.ctx = canvas.getContext("2d");
+      if (!this.ctx) throw new Error("RigAnim requires a Canvas 2D context.");
+      if (canvas.__rigController) canvas.__rigController.destroy();
       canvas.__rigController = this;
 
       this.opts = {
         status: normalizeStatus(options.status || "pasif"),
-        machineName: options.machineName || "DDH RIG",
-        color: options.color || "#f5b942",
+        machineName: String(options.machineName || "DDH RIG"),
+        color: /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(options.color || "") ? options.color : "#f5b942",
         showDepth: options.showDepth !== false,
-        initialDepth: Number(options.initialDepth || 0),
-        plannedDepth: Number(options.plannedDepth || 0),
+        initialDepth: Math.max(0, finite(options.initialDepth)),
+        plannedDepth: Math.max(0, finite(options.plannedDepth)),
         autoAdvance: options.autoAdvance !== false,
-        autoCycle: options.autoCycle !== false
+        autoCycle: options.autoCycle !== false,
+        theme: options.theme === "dark" ? "dark" : "light",
+        speed: clamp(finite(options.speed, 1), 0.1, 8),
+        quality: options.quality === "low" ? "low" : "high",
+        coreEveryRods: Math.max(1, Math.round(finite(options.coreEveryRods, 1))),
+        onDepthChange: options.onDepthChange, onPhaseChange: options.onPhaseChange,
+        onComplete: options.onComplete, onNewHole: options.onNewHole
       };
 
       this.status = this.opts.status;
@@ -178,7 +175,11 @@
       this.headY = -120;
       this.phase = "drill";
       this.phaseT = 0;
-      this.rodCount = 0;
+      this.rodCount = Math.floor(this.depth / ROD_METERS);
+      this.completed = false;
+      this.completionPending = false;
+      this._reportedDepth = this.depth;
+      this._reportedPhase = "";
       this.rackRods = 4;
       this.coreCount = 0;
 
@@ -214,37 +215,47 @@
       }
       if (IO) IO.observe(canvas);
 
-      if (REDUCED) this.renderFrame();
-      else this.start();
+      if (!canvas.hasAttribute("role")) canvas.setAttribute("role", "img");
+      this._ownsAria = !canvas.hasAttribute("aria-label");
+      this.renderFrame(); this.start();
     }
 
     /* ---------- yaşam döngüsü ---------- */
     resize() {
+      if (this.destroyed) return;
       const dpr = Math.min(global.devicePixelRatio || 1, DPR_MAX);
       this.dpr = dpr;
-      const cs = getComputedStyle(this.canvas);
-      const cssW = parseFloat(cs.width) || LOGICAL_W;
-      const cssH = parseFloat(cs.height) || LOGICAL_H;
-      if (!this.canvas.style.width) this.canvas.style.width = LOGICAL_W + "px";
-      if (!this.canvas.style.height) this.canvas.style.height = LOGICAL_H + "px";
+      const cs = global.getComputedStyle(this.canvas);
+      // Only replace the browser's unsized 300 × 150 default; respect CSS sizing.
+      if (!this.canvas.style.width && !this.canvas.style.height &&
+          !this.canvas.getAttribute("width") && !this.canvas.getAttribute("height") &&
+          cs.width === "300px" && cs.height === "150px") {
+        this.canvas.style.width = LOGICAL_W + "px";
+        this.canvas.style.height = LOGICAL_H + "px";
+      }
+      const rect = this.canvas.getBoundingClientRect();
+      const cssW = rect.width || LOGICAL_W, cssH = rect.height || LOGICAL_H;
       const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
       if (this.canvas.width !== w) this.canvas.width = w;
       if (this.canvas.height !== h) this.canvas.height = h;
       this.scaleX = cssW / LOGICAL_W;
       this.scaleY = cssH / LOGICAL_H;
+      this.offsetX = 0;
+      this.offsetY = 0;
       this._staticDirty = true;
-      if (REDUCED) this.renderFrame();
+      this.renderFrame();
     }
 
     start() {
-      if (this.destroyed || this.running || REDUCED) return;
+      if (this.destroyed || this.running) return;
       this.running = true;
       Ticker.add(this);
     }
-    pause() { this.running = false; Ticker.remove(this); }
+    pause() { this.running = false; Ticker.remove(this); this.renderFrame(); }
     resume() { this.start(); }
 
     destroy() {
+      if (this.destroyed) return;
       this.pause();
       this.destroyed = true;
       if (this._ro) this._ro.disconnect();
@@ -256,30 +267,71 @@
     }
 
     setStatus(s) {
-      s = normalizeStatus(s);
-      if (s === this.status) return;
-      this.status = s;
-      if (s === "aktif" && this.opPhase === "work") { this.phase = "drill"; this.phaseT = 0; }
-      this._staticDirty = true;
-      if (REDUCED) this.renderFrame();
+      s = normalizeStatus(s); if (this.destroyed || s === this.status) return;
+      this.status = this.opts.status = s;
+      this._staticDirty = true; this.notifyPhase(); this.renderFrame();
     }
     setDepth(m) {
-      const v = Number(m);
-      if (Number.isFinite(v)) this.depth = v;
-      if (REDUCED) { this.displayDepth = this.depth; this.renderFrame(); }
+      if (this.destroyed || !Number.isFinite(Number(m))) return;
+      this.depth = Math.max(0, Number(m)); this.rodCount = Math.floor(this.depth / ROD_METERS);
+      this.displayDepth = this.depth; this.depthFlash = 1;
+      this.reportDepth(true); this.renderFrame();
     }
     setPlannedDepth(m) {
-      const v = Number(m);
-      if (Number.isFinite(v)) { this.opts.plannedDepth = v; if (REDUCED) this.renderFrame(); }
+      if (this.destroyed || !Number.isFinite(Number(m))) return;
+      this.opts.plannedDepth = Math.max(0, Number(m)); this.renderFrame();
     }
     getDepth() { return this.depth; }
-    /** Kuyu tamamlandı durumundan yeni kuyuya manuel geçiş */
+    setSpeed(speed) { this.opts.speed = clamp(finite(speed, this.opts.speed), 0.1, 8); }
+    setOptions(options = {}) {
+      if (this.destroyed) return;
+      if (options.status !== undefined) this.setStatus(options.status);
+      if (options.plannedDepth !== undefined) this.setPlannedDepth(options.plannedDepth);
+      if (options.initialDepth !== undefined) this.setDepth(options.initialDepth);
+      if (options.speed !== undefined) this.setSpeed(options.speed);
+      for (const key of ["autoAdvance","autoCycle","showDepth"]) if (key in options) this.opts[key] = !!options[key];
+      if (options.machineName !== undefined) this.opts.machineName = String(options.machineName);
+      if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(options.color || "")) this.opts.color = options.color;
+      if (options.theme !== undefined) this.opts.theme = options.theme === "dark" ? "dark" : "light";
+      if (options.quality !== undefined) this.opts.quality = options.quality === "low" ? "low" : "high";
+      if (options.coreEveryRods !== undefined) this.opts.coreEveryRods = Math.max(1, Math.round(finite(options.coreEveryRods, 1)));
+      for (const key of ["onDepthChange","onPhaseChange","onComplete","onNewHole"]) if (key in options) this.opts[key] = options[key];
+      this._staticDirty = true; this.renderFrame();
+    }
+    getState() {
+      const label = this.status === "pasif" ? "PARK HALİNDE" : this.status === "durak" ? "BEKLEME" : "AKTİF";
+      const drilling = this.isDrilling();
+      return { status:this.status, phase:this.phase, operation:this.opPhase, phaseLabel:label,
+        depth:this.depth, plannedDepth:this.opts.plannedDepth, progress:this.opts.plannedDepth > 0 ? clamp(this.depth / this.opts.plannedDepth,0,1) : null,
+        coreCount:this.coreCount, rodCount:this.rodCount, completed:this.completed,
+        running:this.running, simulation:this.opts.autoAdvance, speed:this.opts.speed,
+        telemetry:{ simulated:true, rpm:drilling?Math.round(680+Math.sin(this.time*2)*18):0, pressure:drilling?+(42+Math.sin(this.time*1.7)*1.4).toFixed(1):0, flow:drilling?+(28+Math.sin(this.time*2.3)*0.8).toFixed(1):0 } };
+    }
+    emitEvent(type, callback) {
+      if (this.destroyed) return;
+      const state = this.getState();
+      if (typeof this.opts[callback] === "function") { try { this.opts[callback](state); } catch (e) { console.error("RigAnim callback:", e); } }
+      if (typeof global.CustomEvent === "function") this.canvas.dispatchEvent(new CustomEvent("rig:"+type,{detail:state}));
+    }
+    reportDepth(force = false) {
+      if (force && this.depth !== this._reportedDepth || Math.abs(this.depth-this._reportedDepth)>=0.02 || this.depth===this.opts.plannedDepth && this.depth!==this._reportedDepth) {
+        this._reportedDepth=this.depth; this.emitEvent("depth","onDepthChange");
+      }
+    }
+    notifyPhase() {
+      const key=this.status+":"+this.opPhase+":"+this.phase;
+      if (key!==this._reportedPhase) { this._reportedPhase=key; this.emitEvent("phase","onPhaseChange"); }
+    }
     newHole(plannedDepth) {
-      if (Number.isFinite(Number(plannedDepth))) this.opts.plannedDepth = Number(plannedDepth);
-      this.depth = 0; this.displayDepth = 0; this.coreCount = 0;
-      this.rodVis = 1;
-      this.opPhase = "raise"; this.opT = 0;
-      this.phase = "drill"; this.phaseT = 0;
+      if (this.destroyed) return;
+      if (Number.isFinite(Number(plannedDepth))) this.opts.plannedDepth=Math.max(0,Number(plannedDepth));
+      this.depth=this.displayDepth=this.coreCount=this.rodCount=0;
+      this.completed=this.completionPending=false;this._reportedDepth=0;
+      this.rodVis=1;this.walkX=0;this.erect=0;this.rackRods=4;
+      this.man.x=44;this.man.trayTimer=0;
+      this.opPhase="raise";this.opT=0;this.phase="drill";this.phaseT=0;
+      this.headY=this.headTop();this.chips=[];this.dust=[];this.smoke=[];this.sparks=[];
+      this.emitEvent("newhole","onNewHole");this.notifyPhase();this.renderFrame();
     }
 
     /* ---------- geometri yardımcıları ---------- */
@@ -287,8 +339,7 @@
     curMastLen() { return this.v.mastLen * (0.55 + 0.45 * this.erectEase()); }
     headTop() { return -(this.curMastLen() - 46); }
     mastSway() {
-      return (this.status === "durak" && this.erect > 0.97)
-        ? Math.sin(this.time * 2.1) * 0.6 : 0;
+      return this.isDrilling() ? Math.sin(this.time * 7.1) * 0.045 : 0;
     }
     mastAngleDeg() {
       return LEAN_DEG + this.mastSway() + (1 - this.erectEase()) * TILT_DOWN;
@@ -308,18 +359,19 @@
     /* ---------- güncelleme ---------- */
     frame(dt) {
       if (!this.running || this.destroyed) return;
-      this.update(dt);
+      this.update(dt * this.opts.speed);
       if (this.visible) this.renderFrame();
     }
 
     update(dt) {
+      dt = clamp(finite(dt), 0, 0.4);
       this.time += dt;
       this.displayDepth = lerp(this.displayDepth, this.depth, clamp(dt * 6, 0, 1));
       this.depthFlash = Math.max(0, this.depthFlash - dt * 1.6);
 
       // mast kurulum/indirme hedefi
       const wantUp = this.status !== "pasif" &&
-        !["lower", "walkout", "walkin", "done"].includes(this.opPhase);
+        !["lower", "walkout", "walkin"].includes(this.opPhase);
       const target = wantUp ? 1 : 0;
       this.erect += clamp(target - this.erect, -dt / 2.4, dt / 2.4);
 
@@ -332,22 +384,23 @@
 
       if (this.status === "aktif" && this.opPhase === "work" && this.erect > 0.985) {
         this.updateCycle(dt);
-      } else {
+      } else if (this.status !== "durak") {
         const park = (this.status === "durak" && this.erect > 0.97) ? -112 : this.headTop();
         this.headY = lerp(this.headY, park, clamp(dt * 3, 0, 1));
       }
 
       // efekt üretimi
       if (this.isDrilling()) {
-        this.emit("chip", this.chips, dt, 9, 10, () => this.mkChip());
-        this.emit("dust", this.dust, dt, 3.5, 8, () => this.mkDust());
+        if (this.opts.quality !== "low") {
+          this.emit("chip", this.chips, dt, 4, 10, () => this.mkChip());
+          this.emit("dust", this.dust, dt, 1, 8, () => this.mkDust());
+        }
         this._accRip = (this._accRip || 0) + dt * 1.6;
         if (this._accRip >= 1 && this.ripples.length < 4) {
           this._accRip = 0;
           this.ripples.push({ age: 0, life: 1.3 });
         }
-        if (Math.random() < dt * 0.9)
-          for (let i = 0; i < 4; i++) this.sparks.push(this.mkSpark());
+
         // dönüş suyu akışı
         for (let i = 0; i < this.flow.length; i++)
           this.flow[i] = (this.flow[i] + dt * 0.55) % 1;
@@ -356,12 +409,13 @@
       if (walking) {
         this.emit("wdust", this.dust, dt, 6, 10, () => this.mkWalkDust());
       }
-      if (this.status !== "pasif") {
+      if (this.status !== "pasif" && this.opts.quality !== "low" && this.opPhase !== "done") {
         const rate = (this.status === "aktif" && this.opPhase !== "done") ? 3.6 : 1.1;
         this.emit("smoke", this.smoke, dt, rate, 12, () => this.mkSmoke());
       }
       this.stepParticles(dt);
       this.updateOperator(dt);
+      this.reportDepth();this.notifyPhase();
     }
 
     updateOp(dt) {
@@ -384,11 +438,13 @@
           break;
         case "walkout":
           this.walkX += dt * 34;
-          if (this.walkX > 96) {
+          if (this.walkX > 210) {
             // yeni kuyu: sahaya soldan giriş
             this.depth = 0; this.displayDepth = 0;
             this.coreCount = 0; this.rodCount = 0;
-            this.walkX = -150;
+            this.completed=false;this.completionPending=false;this._reportedDepth=0;
+            this.emitEvent("newhole","onNewHole");
+            this.walkX = -210;
             this.opPhase = "walkin";
           }
           break;
@@ -411,70 +467,61 @@
     }
 
     updateCycle(dt) {
-      this.phaseT += dt;
-      const def = PHASES[this.phase];
-      const t = clamp(this.phaseT / def.dur, 0, 1);
-      const top = this.headTop();
-
-      switch (this.phase) {
-        case "drill":
-          this.headY = lerp(top, HEAD_BOT, easeInOut(clamp(t * 1.04, 0, 1)));
-          if (this.opts.autoAdvance) this.depth += (ROD_METERS / def.dur) * dt;
-          break;
-        case "lift":
-          this.headY = lerp(HEAD_BOT, top, easeOutCubic(t));
-          break;
-        default:
-          this.headY = top;
-      }
-
-      if (t >= 1) {
-        this.phaseT = 0;
-        if (this.phase === "drill") {
-          this.rodCount++;
-          // kuyu bitti mi?
-          if (this.opts.plannedDepth > 0 && this.depth >= this.opts.plannedDepth) {
-            this.depth = this.opts.plannedDepth;
-            this.depthFlash = 1;
-            this.opPhase = "tripout"; this.opT = 0;
-            this.phase = "clamp";
-            return;
+      let remaining=dt;
+      while (remaining>0.000001 && this.opPhase==="work") {
+        const def=PHASES[this.phase], step=Math.min(remaining,Math.max(0,def.dur-this.phaseT));
+        this.phaseT+=step;remaining-=step;
+        const t=clamp(this.phaseT/def.dur,0,1),top=this.headTop();
+        if (this.phase==="drill") {
+          this.headY=lerp(top,HEAD_BOT,easeInOut(t));
+          if (this.opts.autoAdvance) {
+            this.depth+=ROD_METERS/def.dur*step;
+            if (this.opts.plannedDepth>0 && this.depth>=this.opts.plannedDepth-1e-8) {
+              this.depth=this.opts.plannedDepth;this.completionPending=true;
+              this.phaseT=def.dur;
+            }
           }
-          this.phase = "lift";
-        } else if (this.phase === "lift") {
-          this.phase = (this.rodCount % 4 === 0) ? "wl_down" : "rodswing";
-        } else if (this.phase === "wl_down") this.phase = "wl_grab";
-        else if (this.phase === "wl_grab") this.phase = "wl_up";
-        else if (this.phase === "wl_up") {
-          this.coreCount = (this.coreCount % 6) + 1;
-          this.depthFlash = 1;
-          this.man.trayTimer = 2.4;   // operatör tepsiye gider
-          this.phase = "rodswing";
-        } else if (this.phase === "rodswing") {
-          this.rackRods = this.rackRods > 1 ? this.rackRods - 1 : 4;
-          this.phase = "clamp";
-        } else if (this.phase === "clamp") this.phase = "drill";
+        } else if (this.phase==="lift") this.headY=lerp(HEAD_BOT,top,easeOutCubic(t));
+        else this.headY=top;
+        if (this.phaseT+1e-8<def.dur) break;
+        this.phaseT=0;
+        if (this.phase==="drill") {
+          this.rodCount++;this.phase="lift";
+        } else if (this.phase==="lift") this.phase=(this.completionPending || this.rodCount%this.opts.coreEveryRods===0)?"wl_down":"rodswing";
+        else if (this.phase==="wl_down") this.phase="wl_grab";
+        else if (this.phase==="wl_grab") this.phase="wl_up";
+        else if (this.phase==="wl_up") { this.phase="core_transfer";this.man.trayTimer=PHASES.core_transfer.dur;this.depthFlash=1; }
+        else if (this.phase==="core_transfer") {
+          this.coreCount++;this.man.trayTimer=0;
+          if (this.completionPending) {
+            this.completed=true;this.depthFlash=1;this.opPhase="tripout";this.opT=0;
+            this.emitEvent("complete","onComplete");
+          } else this.phase="rodswing";
+        } else if (this.phase==="rodswing") { this.rackRods=this.rackRods>1?this.rackRods-1:4;this.phase="clamp"; }
+        else if (this.phase==="clamp") this.phase="drill";
+        this.notifyPhase();
       }
     }
 
     /* ---------- operatör ---------- */
     updateOperator(dt) {
       const m = this.man;
-      m.trayTimer = Math.max(0, m.trayTimer - dt);
+      if (this.status === "aktif") m.trayTimer = Math.max(0, m.trayTimer - dt);
 
       const walking = ["lower", "walkout", "walkin", "raise"].includes(this.opPhase);
       m.present = this.status !== "pasif" && !walking && this.opPhase !== "done";
 
       if (!m.present) return;
+      if (this.status === "durak") { m.moving=false; return; }
 
-      if (m.trayTimer > 0.6) m.tx = TRAY.x + 8;                  // karot taşıma
+      if (this.phase === "core_transfer" && this.status === "aktif") m.tx = TRAY.x + 8;                  // karot taşıma
       else if (this.status === "durak") m.tx = 52;               // yaslanma
       else if (this.opPhase === "tripout") m.tx = 58;            // mast dibi
       else if (this.phase === "rodswing") m.tx = 58;
       else m.tx = 42;                                            // kumanda paneli
 
       const dx = m.tx - m.x;
-      const sp = clamp(dx, -dt * 24, dt * 24);
+      const sp = clamp(dx, -dt * 48, dt * 48);
       m.x += sp;
       m.moving = Math.abs(dx) > 1;
       if (m.moving) m.step += dt * 9;
@@ -491,9 +538,9 @@
     }
     mkChip() {
       const ang = (70 + Math.random() * 110) * RAD;
-      const sp = 30 + Math.random() * 34;
+      const sp = 5 + Math.random() * 9;
       return { x: BASE_X, y: BASE_Y, vx: Math.cos(ang) * sp, vy: -Math.sin(ang) * sp * 0.7,
-        age: 0, life: 0.7 + Math.random() * 0.5, r: 1.2 + Math.random() * 1.6,
+        age: 0, life: 0.7 + Math.random() * 0.5, r: 0.45 + Math.random() * 0.5,
         c: Math.random() > 0.45 ? "#b59a76" : "#5d646f" };
     }
     mkDust() {
@@ -511,7 +558,7 @@
         age: 0, life: 0.9 + Math.random() * 0.6, r: 2.5 + Math.random() * 3 };
     }
     mkSmoke() {
-      return { x: 148 + this.walkX + Math.random() * 4, y: 158,
+      return { x: 96 + this.v.bodyW / 2 + 14 - 19 + this.walkX + Math.random() * 2, y: 150,
         vx: -3 + Math.random() * 7, vy: -13 - Math.random() * 9,
         age: 0, life: 1.6 + Math.random() * 1.1, r: 2.6 + Math.random() * 4 };
     }
@@ -536,111 +583,53 @@
 
     /* ---------- statik katman ---------- */
     buildStatic() {
-      if (!this._static) this._static = document.createElement("canvas");
-      const s = this._static;
-      s.width = this.canvas.width;
-      s.height = this.canvas.height;
-      const ctx = s.getContext("2d");
-      ctx.setTransform(this.dpr * this.scaleX, 0, 0, this.dpr * this.scaleY, 0, 0);
-
-      // gökyüzü
-      const sky = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
-      sky.addColorStop(0, "#f8fafc");
-      sky.addColorStop(0.7, "#eef4fb");
-      sky.addColorStop(1, "#e8eef6");
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
-
-      ctx.fillStyle = "rgba(93,105,125,.08)";
-      for (let y = 12; y < GROUND_Y - 8; y += 16)
-        for (let x = 8; x < LOGICAL_W; x += 16)
-          ctx.fillRect(x, y, 1, 1);
-
-      ctx.fillStyle = "#dfe7f0";
-      ctx.beginPath();
-      ctx.moveTo(0, 226);
-      ctx.lineTo(36, 214); ctx.lineTo(78, 224); ctx.lineTo(120, 210);
-      ctx.lineTo(160, 222); ctx.lineTo(200, 212); ctx.lineTo(200, GROUND_Y);
-      ctx.lineTo(0, GROUND_Y);
-      ctx.closePath(); ctx.fill();
-
-      const gr = ctx.createLinearGradient(0, GROUND_Y, 0, LOGICAL_H);
-      gr.addColorStop(0, "#edf2f7");
-      gr.addColorStop(1, "#d8e1eb");
-      ctx.fillStyle = gr;
-      ctx.fillRect(0, GROUND_Y, LOGICAL_W, LOGICAL_H - GROUND_Y);
-      ctx.strokeStyle = "rgba(100,116,139,.22)";
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(LOGICAL_W, GROUND_Y); ctx.stroke();
-
-      const rnd = seedFrom(this.opts.machineName + "rocks");
-      ctx.fillStyle = "#c3ccd8";
-      for (let i = 0; i < 14; i++) {
-        const x = rnd() * LOGICAL_W, y = GROUND_Y + 6 + rnd() * 60, w = 1 + rnd() * 2.4;
-        ctx.fillRect(x, y, w, w * 0.7);
-      }
-
-      // yeraltı kuyu kesiti
-      ctx.save();
-      ctx.translate(BASE_X, BASE_Y);
-      ctx.rotate(LEAN_DEG * RAD);
-      const holeG = ctx.createLinearGradient(0, 0, 0, 76);
-      holeG.addColorStop(0, "#06080c");
-      holeG.addColorStop(1, "#0a0d13");
-      ctx.fillStyle = holeG;
-      rr(ctx, -4, 0, 8, 78, 3); ctx.fill();
-      ctx.strokeStyle = "rgba(245,185,66,.22)";
-      ctx.lineWidth = 0.8;
-      for (let y = 12; y < 76; y += 16) {
-        ctx.beginPath(); ctx.moveTo(-6.5, y); ctx.lineTo(-4, y); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(6.5, y); ctx.stroke();
-      }
-      ctx.fillStyle = "#39404e";
-      rr(ctx, -5.5, -9, 11, 11, 2); ctx.fill();
-      ctx.fillStyle = colA(this.opts.color, 0.75);
-      ctx.fillRect(-5.5, -6, 11, 2.2);
-      ctx.restore();
-
-      // dönüş suyu kanalı (kuyu → havuz)
-      ctx.strokeStyle = "rgba(60,50,34,.85)";
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(BASE_X - 6, BASE_Y + 1);
-      ctx.quadraticCurveTo(52, 250, PIT.x + PIT.w - 2, PIT.y + 4);
-      ctx.stroke();
-
-      // çamur havuzu (kazı + kenar)
-      ctx.fillStyle = "#0c0f15";
-      rr(ctx, PIT.x, PIT.y, PIT.w, PIT.h, 3); ctx.fill();
-      ctx.strokeStyle = "rgba(150,170,205,.22)";
-      ctx.lineWidth = 0.9;
-      rr(ctx, PIT.x, PIT.y, PIT.w, PIT.h, 3); ctx.stroke();
-
-      // karot tepsisi
-      ctx.fillStyle = "#1b2230";
-      rr(ctx, TRAY.x, TRAY.y, TRAY.w, TRAY.h, 2); ctx.fill();
-      ctx.strokeStyle = "rgba(150,170,205,.2)"; ctx.lineWidth = 0.8;
-      rr(ctx, TRAY.x, TRAY.y, TRAY.w, TRAY.h, 2); ctx.stroke();
-      for (let i = 1; i < 6; i++) {
-        ctx.beginPath();
-        ctx.moveTo(TRAY.x + i * (TRAY.w / 6), TRAY.y);
-        ctx.lineTo(TRAY.x + i * (TRAY.w / 6), TRAY.y + TRAY.h);
-        ctx.stroke();
-      }
-
-      this._staticDirty = false;
+      if (!this._static) this._static=document.createElement("canvas");
+      const c=this._static.getContext("2d"),P=PALETTES[this.opts.theme];
+      this._static.width=this.canvas.width;this._static.height=this.canvas.height;
+      c.fillStyle=P.sky;c.fillRect(0,0,this._static.width,this._static.height);
+      c.setTransform(this.dpr*this.scaleX,0,0,this.dpr*this.scaleY,this.offsetX*this.dpr,this.offsetY*this.dpr);
+      const sky=c.createLinearGradient(0,0,0,GROUND_Y);sky.addColorStop(0,P.sky);sky.addColorStop(1,P.horizon);c.fillStyle=sky;c.fillRect(0,0,200,320);
+      c.fillStyle=P.line;
+      for(let y=46;y<220;y+=12)for(let x=8;x<200;x+=12)c.fillRect(x,y,.6,.6);
+      poly(c,[[0,210],[15,191],[39,203],[76,164],[98,182],[121,173],[157,199],[185,186],[200,195],[200,242],[0,242]],P.far);
+      poly(c,[[0,225],[30,209],[49,216],[86,195],[112,213],[145,200],[168,217],[200,207],[200,243],[0,243]],P.mountain);
+      poly(c,[[76,164],[98,182],[88,177],[79,183],[74,178],[64,183]],this.opts.theme==="dark"?"#42606b":"#edf4f3");
+      poly(c,[[30,209],[49,216],[40,225],[25,222],[0,236],[0,225]],P.ground);
+      const terrain=c.createLinearGradient(0,227,0,246);terrain.addColorStop(0,P.ground);terrain.addColorStop(1,P.rock[0]);c.fillStyle=terrain;c.fillRect(0,237,200,9);
+      // Schematic strata. Geometry represents no specific lithology or scale.
+      poly(c,[[0,245],[200,245],[200,257],[155,260],[110,255],[70,263],[0,256]],P.rock[0]);
+      poly(c,[[0,256],[70,263],[110,255],[155,260],[200,257],[200,279],[136,274],[84,284],[0,271]],P.rock[1]);
+      poly(c,[[0,271],[84,284],[136,274],[200,279],[200,320],[0,320]],P.rock[2]);
+      line(c,[[0,256],[70,263],[110,255],[155,260],[200,257]],P.line,.6);
+      line(c,[[0,271],[84,284],[136,274],[200,279]],P.line,.6);
+      const rnd=seedFrom(this.opts.machineName+"geology");
+      for(let i=0;i<110;i++) { const x=rnd()*200,y=246+rnd()*43;c.fillStyle=P.line;c.fillRect(x,y,.5+rnd(),.5); }
+      line(c,[[120,248],[131,261],[140,278],[145,288]],this.opts.theme==="dark"?"#b49a61":"#ac9972",2.5);
+      line(c,[[126,254],[119,264],[125,272]],this.opts.theme==="dark"?"#b49a61":"#ac9972",1);
+      line(c,[[0,243],[200,243]],P.line,1);
+      c.save();c.translate(BASE_X,BASE_Y);c.rotate(LEAN_DEG*RAD);
+      box(c,-4,0,8,44,2,"#15232b");line(c,[[-4,0],[-4,43]],"#607987",.6);
+      box(c,-5.5,-9,11,12,1.5,"#334750");box(c,-5.5,-7,11,2,1,this.opts.color);
+      c.restore();
+      box(c,PIT.x,PIT.y,PIT.w,PIT.h,3,"#203c44");
+      line(c,[[PIT.x,PIT.y+1],[PIT.x+PIT.w,PIT.y+1]],"#92adb0",1.2);
+      box(c,TRAY.x,TRAY.y,TRAY.w,TRAY.h,1.5,"#75878b");box(c,TRAY.x+1.5,TRAY.y+1.5,TRAY.w-3,TRAY.h-3,1,"#d0c4a1");
+      for(let i=1;i<6;i++)line(c,[[TRAY.x+i*TRAY.w/6,TRAY.y+1],[TRAY.x+i*TRAY.w/6,TRAY.y+TRAY.h-1]],"#7a816e",.6);
+      for(const x of [12,188]) { box(c,x-2,233,4,9,1,"#f68a40");box(c,x-2,236,4,1.5,0,"#ffe7cb");box(c,x-3.5,241,7,1.5,1,"#334850"); }
+      line(c,[[91,273],[111,273]],P.muted,.5);label(c,"ŞEMATİK KESİT",114,275,4.1,P.muted,600);
+      this._staticDirty=false;
     }
 
-    /* ---------- çizim ---------- */
     renderFrame() {
+      if (this.destroyed) return;
       const ctx = this.ctx;
       if (this._staticDirty) this.buildStatic();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       ctx.drawImage(this._static, 0, 0);
-      ctx.setTransform(this.dpr * this.scaleX, 0, 0, this.dpr * this.scaleY, 0, 0);
+      ctx.setTransform(this.dpr * this.scaleX, 0, 0, this.dpr * this.scaleY, this.offsetX * this.dpr, this.offsetY * this.dpr);
 
-      const off = this.status === "pasif";
+      ctx.save();ctx.beginPath();ctx.rect(0,0,LOGICAL_W,LOGICAL_H);ctx.clip();
 
       this.drawLightCone(ctx);
       this.drawMudPit(ctx);
@@ -656,11 +645,9 @@
       this.drawEffects(ctx);
       this.drawOperator(ctx);
 
-      if (off) {
-        ctx.fillStyle = "rgba(248,250,252,.42)";
-        ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
-      }
+
       this.drawHUD(ctx);
+      ctx.restore();
     }
 
     mastTransform(ctx) {
@@ -707,8 +694,8 @@
       const amp = drilling ? 0.8 : 0.25;
       // sıvı yüzeyi (dalgalı)
       const g = ctx.createLinearGradient(0, lvlY, 0, PIT.y + PIT.h);
-      g.addColorStop(0, "#6b5638");
-      g.addColorStop(1, "#403322");
+      g.addColorStop(0, "#7ca3a4");
+      g.addColorStop(1, "#3f6b76");
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(PIT.x + 1.5, lvlY);
@@ -737,6 +724,7 @@
     }
 
     drawSuctionHose(ctx) {
+      if (["lower","walkout","walkin","raise"].includes(this.opPhase) || this.status === "pasif") return;
       // havuz → makine pompası (emiş hattı)
       const w = this.v.bodyW + 14;
       const x0 = 96 - w / 2 + 14 + this.walkX;
@@ -756,7 +744,7 @@
 
     drawDeliveryHose(ctx) {
       // pompa → delici kafa (basma hattı), kafayla birlikte hareket eder
-      if (this.erect < 0.5) return;
+      if (this.erect < 0.5 || ["lower","walkout","walkin"].includes(this.opPhase)) return;
       const hw = this.headWorld();
       const w = this.v.bodyW + 14;
       const x0 = 96 - w / 2 + 14 + this.walkX;
@@ -797,7 +785,7 @@
     }
 
     drawCores(ctx) {
-      for (let i = 0; i < this.coreCount; i++) {
+      for (let i = 0; i < Math.min(this.coreCount, 6); i++) {
         const g = ctx.createLinearGradient(0, TRAY.y + 2, 0, TRAY.y + 9);
         g.addColorStop(0, "#e8c97e");
         g.addColorStop(1, "#8a6b38");
@@ -808,122 +796,73 @@
     }
 
     drawCrawler(ctx) {
-      const w = this.v.bodyW + 14;
-      const x0 = 96 - w / 2 + 14;
-      const walking = this.opPhase === "walkout" || this.opPhase === "walkin";
-      ctx.save();
-      ctx.translate(this.walkX, this.walkBob());
-
-      ctx.fillStyle = "rgba(0,0,0,.4)";
-      ctx.beginPath();
-      ctx.ellipse(x0 + w / 2, 238, w * 0.56, 9, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#1c2330";
-      rr(ctx, x0, 216, w, 22, 10); ctx.fill();
-      ctx.fillStyle = "#11161f";
-      rr(ctx, x0 + 4, 220, w - 8, 15, 7); ctx.fill();
-
-      // pabuçlar — yürürken kayar
-      const treadOff = walking ? (this.walkX * 1.4) % 9 : 0;
-      ctx.strokeStyle = "rgba(255,255,255,.1)";
-      ctx.lineWidth = 1;
-      for (let x = x0 + 4 - treadOff; x < x0 + w - 4; x += 9) {
-        if (x < x0 + 2) continue;
-        ctx.beginPath(); ctx.moveTo(x, 217); ctx.lineTo(x - 3, 237); ctx.stroke();
+      const w=this.v.bodyW+14,x0=96-w/2+14;
+      const walking=["walkout","walkin"].includes(this.opPhase);
+      ctx.save();ctx.translate(this.walkX,this.walkBob());
+      const shadow=ctx.createRadialGradient(x0+w/2,240,2,x0+w/2,240,w*.6);shadow.addColorStop(0,"rgba(10,23,28,.35)");shadow.addColorStop(1,"rgba(10,23,28,0)");
+      ctx.fillStyle=shadow;ctx.beginPath();ctx.ellipse(x0+w/2,240,w*.7,8,0,0,Math.PI*2);ctx.fill();
+      box(ctx,x0+8,210,w-5,21,10,"#293d46");
+      box(ctx,x0,216,w,24,11,"#17262e");box(ctx,x0+3,219,w-6,18,8,"#40545d");box(ctx,x0+5,220,w-10,15,7,"#243942");
+      const shift=walking?((this.walkX*1.6)%7+7)%7:0;
+      ctx.save();rr(ctx,x0,216,w,24,11);ctx.clip();
+      for(let x=x0-7-shift;x<x0+w+7;x+=7) {
+        line(ctx,[[x,217],[x+2,220]],"#70828a",1.2);line(ctx,[[x,237],[x+2,240]],"#536771",1.1);
+      }ctx.restore();
+      for(let i=0;i<6;i++) {
+        const x=x0+11+i*(w-22)/5;ctx.fillStyle="#5f737c";ctx.beginPath();ctx.arc(x,228,6.8,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle="#344b56";ctx.beginPath();ctx.arc(x,228,4.9,0,Math.PI*2);ctx.fill();
+        ctx.save();ctx.translate(x,228);ctx.rotate(walking?this.walkX*.25:0);
+        for(let j=0;j<4;j++){ctx.rotate(Math.PI/2);line(ctx,[[2,0],[4,0]],"#8ea0a7",.7);}bolt(ctx,0,0,1.7);ctx.restore();
       }
-      const wheelSpin = walking ? this.walkX * 0.3 : 0;
-      for (const fx of [0.18, 0.5, 0.82]) {
-        const cx = x0 + w * fx;
-        ctx.fillStyle = "#3a465c";
-        ctx.beginPath(); ctx.arc(cx, 227, 5.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#202938";
-        ctx.save();
-        ctx.translate(cx, 227);
-        ctx.rotate(wheelSpin);
-        ctx.fillRect(-1, -4.5, 2, 9);
-        ctx.restore();
-        ctx.fillStyle = "#202938";
-        ctx.beginPath(); ctx.arc(cx, 227, 2.2, 0, Math.PI * 2); ctx.fill();
+      // Retracting stabilizer feet.
+      const extension=this.erectEase()*15;
+      for(const x of [x0+2,x0+w-2]) {
+        box(ctx,x-2,207,4,10,1,"#2b414c");line(ctx,[[x,214],[x,218+extension]],"#9bafb7",2);
+        box(ctx,x-6,217+extension,12,3,1,"#263942");
       }
       ctx.restore();
     }
 
     drawBody(ctx) {
-      const accent = this.opts.color;
-      const w = this.v.bodyW;
-      const x0 = 96 - w / 2 + 14;
-      const active = this.status === "aktif";
-      const off = this.status === "pasif";
-      const walking = this.opPhase === "walkout" || this.opPhase === "walkin";
-
-      ctx.save();
-      ctx.translate(this.walkX, this.walkBob());
-
-      ctx.fillStyle = "#141a26";
-      rr(ctx, x0 - 2, 207, w + 4, 10, 3); ctx.fill();
-
-      const body = ctx.createLinearGradient(x0, 164, x0, 210);
-      body.addColorStop(0, shade(accent, off ? 0.55 : 1.12));
-      body.addColorStop(0.6, shade(accent, off ? 0.4 : 0.86));
-      body.addColorStop(1, shade(accent, off ? 0.28 : 0.5));
-      ctx.fillStyle = body;
-      rr(ctx, x0, 168, w, 41, 5); ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 1;
-      rr(ctx, x0, 168, w, 41, 5); ctx.stroke();
-      if (this.v.stripe) {
-        ctx.fillStyle = "rgba(12,15,22,.55)";
-        ctx.fillRect(x0 + 4, 196, w - 8, 5);
-      }
-
-      // motor panjuru
-      ctx.fillStyle = "#1d2433";
-      rr(ctx, x0 + 6, 175, 26, 26, 3); ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,.1)"; ctx.lineWidth = 0.9;
-      for (let y = 179; y < 199; y += 4.4) {
-        ctx.beginPath(); ctx.moveTo(x0 + 9, y); ctx.lineTo(x0 + 29, y); ctx.stroke();
-      }
-
-      // çamur pompası (piston animasyonlu)
-      const pumpOn = this.isDrilling();
-      ctx.fillStyle = "#222b3c";
-      rr(ctx, x0 + 14, 204, 16, 9, 2); ctx.fill();
-      const pst = pumpOn ? Math.sin(this.time * 14) * 2 : 0;
-      ctx.fillStyle = pumpOn ? "#7a8aa3" : "#3a465c";
-      rr(ctx, x0 + 18 + pst, 206, 5, 5, 1); ctx.fill();
-
-      // kabin + cam
-      const cabX = x0 + w - 36;
-      ctx.fillStyle = "#222b3c";
-      rr(ctx, cabX, 172, 30, 32, 3); ctx.fill();
-      const glow = off ? 0 : (walking ? 1 : (active ? 0.85 : 0.4));
-      const win = ctx.createLinearGradient(cabX + 3, 176, cabX + 3, 190);
-      win.addColorStop(0, `rgba(255,222,140,${0.16 + glow * 0.5})`);
-      win.addColorStop(1, `rgba(160,190,235,${0.1 + glow * 0.22})`);
-      ctx.fillStyle = win;
-      rr(ctx, cabX + 4, 176, 22, 13, 2); ctx.fill();
-
-      // çakar lamba — yürüyüşte ve durakta yanıp söner
-      const beaconOn = (this.status === "durak" || walking)
-        ? (Math.sin(this.time * 5.2) > 0)
-        : active;
-      ctx.fillStyle = "#39404e";
-      rr(ctx, cabX + 11, 166, 8, 6, 1.5); ctx.fill();
-      ctx.fillStyle = beaconOn ? "#ffb347" : "#5d4a26";
-      rr(ctx, cabX + 12.5, 162, 5, 5, 2); ctx.fill();
-      if (beaconOn && !off) {
-        const bg = ctx.createRadialGradient(cabX + 15, 164, 1, cabX + 15, 164, 12);
-        bg.addColorStop(0, "rgba(255,179,71,.5)");
-        bg.addColorStop(1, "rgba(255,179,71,0)");
-        ctx.fillStyle = bg;
-        ctx.beginPath(); ctx.arc(cabX + 15, 164, 12, 0, Math.PI * 2); ctx.fill();
-      }
-
-      // egzoz bacası
-      ctx.fillStyle = "#1a212e";
-      rr(ctx, 147, 152, 6, 18, 2); ctx.fill();
-      ctx.fillStyle = "#2b3445";
-      rr(ctx, 145.5, 150, 9, 4, 1.5); ctx.fill();
-
+      const accent=this.opts.color,w=this.v.bodyW,x0=96-w/2+14,off=this.status==="pasif";
+      ctx.save();ctx.translate(this.walkX,this.walkBob());
+      // Chassis depth, steel steps and bevelled engine enclosure.
+      poly(ctx,[[x0-2,206],[x0+8,201],[x0+w+8,201],[x0+w+3,214],[x0-2,216]],"#223641");
+      box(ctx,x0-2,207,w+6,8,2,"#3d525b");line(ctx,[[x0+2,208],[x0+w,208]],"#7f959d",.8);
+      const body=ctx.createLinearGradient(0,167,0,205);body.addColorStop(0,shade(accent,off?.72:1.15));body.addColorStop(.5,shade(accent,off?.58:.96));body.addColorStop(1,shade(accent,off?.4:.7));
+      box(ctx,x0+27,169,w-29,35,3,body);
+      poly(ctx,[[x0+27,169],[x0+34,163],[x0+w+5,163],[x0+w-2,169]],shade(accent,1.24));
+      poly(ctx,[[x0+w-2,169],[x0+w+5,163],[x0+w+5,199],[x0+w-2,204]],shade(accent,.55));
+      box(ctx,x0+34,175,26,22,2,"#21343f");
+      for(let y=178;y<195;y+=3)line(ctx,[[x0+37,y],[x0+57,y]],"#526b75",1);
+      for(const x of [x0+29,x0+w-6])for(const y of [172,201])bolt(ctx,x,y,.9);
+      line(ctx,[[x0+65,172],[x0+65,201]],colA("#0e1e28",.3),.7);
+      box(ctx,x0+68,177,11,2,.8,"#334853");
+      ctx.font = "800 5.5px system-ui, sans-serif";
+      label(ctx,fitText(ctx,this.opts.machineName,w-68),x0+69,194,5.5,shade(accent,.3),800);
+      box(ctx,x0+29,199,w-33,3,0,"#253840");
+      for(let x=x0+34;x<x0+w-5;x+=8)poly(ctx,[[x,199],[x+3,199],[x+1,202],[x-2,202]],"#d1b85c");
+      // Operator station, emergency stop and valve bank.
+      box(ctx,x0+3,179,22,23,2,"#324b58");poly(ctx,[[x0+3,179],[x0+8,174],[x0+29,174],[x0+25,179]],"#536e7a");
+      box(ctx,x0+6,181,8,6,1,off?"#263941":"#6bc4cb");
+      line(ctx,[[x0+8,184],[x0+9,183],[x0+11,185],[x0+12,182]],"#163c48",.65);
+      for(let i=0;i<3;i++){line(ctx,[[x0+7+i*6,194],[x0+7+i*6,188]],"#9fb3bb",.9);bolt(ctx,x0+7+i*6,188,1.5);}
+      ctx.fillStyle="#ea6b57";ctx.beginPath();ctx.arc(x0+20,183,1.6,0,Math.PI*2);ctx.fill();
+      box(ctx,x0+6,202,19,3,1,"#778c94");box(ctx,x0+8,210,18,2,1,"#82979d");
+      // Pump + hydraulic lines.
+      box(ctx,x0+29,206,17,8,2,"#20343e");const pst=this.isDrilling()?Math.sin(this.time*14)*2:0;
+      box(ctx,x0+33+pst,208,5,4,1,"#9faeb4");
+      for(let i=0;i<3;i++)line(ctx,[[x0+18+i*2,199],[x0+20+i*2,205],[x0+29,207+i]],"#182f3c",.7);
+      // Exhaust, tank, lifting points.
+      box(ctx,x0+w-21,151,4,16,1,"#2d454f");box(ctx,x0+w-23,150,8,3,1,"#5b717a");
+      box(ctx,x0+39,161,21,3,1,"#5d7179");box(ctx,x0+45,158,7,3,1,"#2b4049");
+      for(const x of [x0+31,x0+w-10]) {ctx.strokeStyle="#4b626e";ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,163,2.2,Math.PI,0);ctx.stroke();}
+      // Canopy and amber beacon.
+      line(ctx,[[x0+2,179],[x0+2,158],[x0+27,158],[x0+27,172]],"#2c444f",2);
+      poly(ctx,[[x0-3,157],[x0+4,153],[x0+34,153],[x0+28,157]],"#5d7681");box(ctx,x0-3,157,31,2,1,"#263e49");
+      const beacon=!off && this.opPhase!=="done" && Math.sin(this.time*5)>-.3;
+      box(ctx,x0+16,149,5,4,1,beacon?"#ffc45c":"#8c7043");
+      if(beacon){const g=ctx.createRadialGradient(x0+18.5,151,0,x0+18.5,151,8);g.addColorStop(0,"rgba(255,184,66,.38)");g.addColorStop(1,"rgba(255,184,66,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(x0+18.5,151,8,0,Math.PI*2);ctx.fill();}
       ctx.restore();
     }
 
@@ -964,67 +903,36 @@
     }
 
     drawMast(ctx) {
-      const L = this.curMastLen();
-      const accent = this.opts.color;
-      ctx.save();
-      this.mastTransform(ctx);
-
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,.5)";
-      ctx.shadowBlur = 8;
-      ctx.shadowOffsetX = 3;
-      ctx.fillStyle = "#161c28";
-      rr(ctx, -8, -L, 16, L - 8, 2); ctx.fill();
-      ctx.restore();
-
-      ctx.strokeStyle = "#3a465c";
-      ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(-6, -L + 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(6, -10); ctx.lineTo(6, -L + 2); ctx.stroke();
-      ctx.strokeStyle = "#2b3445";
-      ctx.lineWidth = 1.3;
-      for (let y = -16; y > -L + 8; y -= 13) {
-        ctx.beginPath(); ctx.moveTo(-6, y); ctx.lineTo(6, y - 6.5); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(6, y); ctx.lineTo(-6, y - 6.5); ctx.stroke();
+      const L=this.curMastLen(),accent=this.opts.color;
+      ctx.save();this.mastTransform(ctx);
+      poly(ctx,[[-7,-L],[0,-L-3],[11,-L-3],[7,-L]],"#667d88");
+      poly(ctx,[[7,-L],[11,-L-3],[11,-14],[7,-10]],"#243e4b");
+      box(ctx,-7,-L,14,L-10,1.5,"#1c303c");
+      for(let y=-19;y>-L+11;y-=13) {
+        line(ctx,[[-5,y],[5,y-11]],"#587481",1.1);line(ctx,[[5,y],[-5,y-11]],"#304e5d",.8);
+        bolt(ctx,-5,y,.65);bolt(ctx,5,y,.65);
       }
-      ctx.strokeStyle = colA(accent, this.status === "pasif" ? 0.35 : 0.8);
-      ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(-8.5, -12); ctx.lineTo(-8.5, -L + 4); ctx.stroke();
-
-      // tepe makarası + projektör
-      ctx.fillStyle = "#39404e";
-      rr(ctx, -7, -L - 12, 14, 14, 3); ctx.fill();
-      ctx.fillStyle = "#11161f";
-      ctx.beginPath(); ctx.arc(0, -L - 5, 4.6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#5a6a82"; ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.arc(0, -L - 5, 4.6, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = this.status === "pasif" ? "#3a3f4c" : "#f5d98a";
-      rr(ctx, 5, -L + 8, 7, 5, 1.5); ctx.fill();
-
-      // tij rafı (mast üstünde taşınır)
-      for (let i = 0; i < this.rackRods; i++) {
-        ctx.strokeStyle = i % 2 ? "#4b5563" : "#5d6b80";
-        ctx.lineWidth = 2.6;
-        ctx.beginPath();
-        ctx.moveTo(-13 - i * 3, -14);
-        ctx.lineTo(-10 - i * 3, -Math.min(96, L * 0.5));
-        ctx.stroke();
+      line(ctx,[[-7,-11],[-7,-L]],shade(accent,.82),2.2);
+      line(ctx,[[7,-11],[7,-L]],"#9bb0b9",1.5);line(ctx,[[9,-16],[9,-L+5]],"#496472",1);
+      // Feed chain, pulley and service light.
+      line(ctx,[[-2,-L+12],[-2,-16]],"#738994",.6);
+      for(let y=-20;y>-L+16;y-=4)line(ctx,[[-3,y],[-1,y]],"#b7c4c9",.6);
+      box(ctx,-8,-L-10,16,12,2,"#3e5966");
+      ctx.fillStyle="#1b3340";ctx.beginPath();ctx.arc(0,-L-5,4,0,Math.PI*2);ctx.fill();bolt(ctx,0,-L-5,1.1);
+      ctx.strokeStyle="#718d9b";ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,-L-5,4,0,Math.PI*2);ctx.stroke();
+      box(ctx,7,-L+8,6,4,1,this.status==="pasif"?"#627682":"#fff2c0");
+      // Rod cradle, solid steel rods and collars.
+      for(let i=0;i<this.rackRods;i++) {
+        line(ctx,[[-15-i*3,-16],[-12-i*3,-Math.min(98,L*.65)]],"#788e97",2.1);
+        line(ctx,[[-14.6-i*3,-16],[-11.6-i*3,-Math.min(98,L*.65)]],"#c4d0d3",.55);
       }
-
-      // ayak kelepçesi (foot clamp)
-      if (this.erect > 0.9) {
-        ctx.fillStyle = "#2b3445";
-        rr(ctx, -9, -7, 18, 6, 2); ctx.fill();
+      line(ctx,[[-27,-24],[-8,-24]],"#2a414d",2);line(ctx,[[-22,-83],[-8,-83]],"#2a414d",2);
+      if(this.erect>.9) {
+        box(ctx,-9,-9,18,8,2,"#4e6773");box(ctx,-6,-7,12,4,1,this.phase==="clamp"?shade(accent,.9):"#213b48");
+        bolt(ctx,-7,-5,.9);bolt(ctx,7,-5,.9);
       }
-
-      const headY = this.headY;
-      ctx.strokeStyle = "rgba(190,200,215,.5)";
-      ctx.lineWidth = 0.9;
-      ctx.beginPath(); ctx.moveTo(0, -L - 5); ctx.lineTo(0, headY - 9); ctx.stroke();
-
-      this.drawHead(ctx, headY);
-      this.drawRodSwing(ctx, headY);
-      ctx.restore();
+      line(ctx,[[0,-L-5],[0,this.headY-9]],"rgba(190,208,217,.6)",.7);
+      this.drawHead(ctx,this.headY);this.drawRodSwing(ctx,this.headY);ctx.restore();
     }
 
     drawHead(ctx, headY) {
@@ -1094,7 +1002,7 @@
       }
 
       if (this.phase === "wl_down" || this.phase === "wl_grab" || this.phase === "wl_up") {
-        const holeBot = 58;
+        const holeBot = 8 + (this.opts.plannedDepth > 0 ? clamp(this.depth / this.opts.plannedDepth,0,1) : clamp(this.depth/150,0,1)) * 31;
         let y;
         if (this.phase === "wl_down") y = lerp(headY + 14, holeBot, easeInOut(clamp(this.phaseT / PHASES.wl_down.dur, 0, 1)));
         else if (this.phase === "wl_grab") y = holeBot;
@@ -1118,34 +1026,19 @@
     }
 
     drawHoleString(ctx) {
-      if (this.rodVis <= 0.01) return;
-      const planned = this.opts.plannedDepth;
-      const prog = planned > 0 ? clamp(this.displayDepth / planned, 0, 1) : 0.5;
-      const fullBitY = 16 + prog * 52;
-      const bitY = lerp(4, fullBitY, this.rodVis);   // trip-out'ta uç yukarı çekilir
-      const drilling = this.isDrilling();
-
-      ctx.save();
-      ctx.translate(BASE_X, BASE_Y);
-      ctx.rotate(LEAN_DEG * RAD);
-      ctx.strokeStyle = `rgba(120,135,158,${0.4 * this.rodVis})`;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(0, 2); ctx.lineTo(0, bitY - 4); ctx.stroke();
-
-      const pulse = drilling ? 0.55 + Math.abs(Math.sin(this.time * 9)) * 0.45 : 0.25;
-      ctx.fillStyle = colA(this.opts.color, pulse * this.rodVis);
-      ctx.beginPath();
-      ctx.moveTo(-3.4, bitY - 4);
-      ctx.lineTo(3.4, bitY - 4);
-      ctx.lineTo(0, bitY + 3);
-      ctx.closePath(); ctx.fill();
-      if (drilling) {
-        const g = ctx.createRadialGradient(0, bitY, 1, 0, bitY, 9);
-        g.addColorStop(0, colA(this.opts.color, 0.4));
-        g.addColorStop(1, colA(this.opts.color, 0));
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(0, bitY, 9, 0, Math.PI * 2); ctx.fill();
-      }
+      if(this.rodVis<=.01 || this.erect<.97 || ["walkout","walkin","raise"].includes(this.opPhase)) return;
+      const prog=this.opts.plannedDepth>0?clamp(this.displayDepth/this.opts.plannedDepth,0,1):clamp(this.displayDepth/150,0,1);
+      const bitY=lerp(4,8+prog*31,this.rodVis),drilling=this.isDrilling();
+      ctx.save();ctx.translate(BASE_X,BASE_Y);ctx.rotate(LEAN_DEG*RAD);
+      line(ctx,[[0,2],[0,bitY-2]],"#9baeb4",2.1);line(ctx,[[-.65,2],[-.65,bitY-2]],"#e1e7e7",.4);
+      for(let y=9;y<bitY-3;y+=10)box(ctx,-1.6,y,3.2,1,.3,"#597785");
+      // Downward annular flush and upward return: conceptual cutaway.
+      if(drilling){for(let i=0;i<3;i++){
+        let y=3+((this.time*13+i*11)%Math.max(4,bitY-4));line(ctx,[[-2.7,y-2],[-2.7,y+1]],"#62bacd",.7);
+        y=bitY-((this.time*11+i*9)%Math.max(4,bitY-2));line(ctx,[[2.7,y+1],[2.7,y-2]],"#d2b481",.7);
+      }}
+      box(ctx,-2,bitY-3,4,5,.7,this.opts.color);line(ctx,[[-2,bitY+2],[2,bitY+2]],"#deeced",.9);
+      if(drilling){const g=ctx.createRadialGradient(0,bitY,0,0,bitY,7);g.addColorStop(0,colA(this.opts.color,.24));g.addColorStop(1,colA(this.opts.color,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,bitY,7,0,Math.PI*2);ctx.fill();}
       ctx.restore();
     }
 
@@ -1208,11 +1101,12 @@
     drawOperator(ctx) {
       const m = this.man;
       if (!m.present) return;
+      if (this.status === "durak") { m.moving=false; return; }
       const x = m.x;
       const footY = 241;
       const lean = this.status === "durak" && !m.moving;
       const crouch = m.trayTimer > 0 && m.trayTimer < 1.2 && !m.moving;
-      const carrying = m.trayTimer > 1.2;
+      const carrying = this.phase === "core_transfer" && m.moving;
 
       const bodyH = crouch ? 8 : 11;
       const headCY = footY - bodyH - 5.5 - (crouch ? -1 : 0);
@@ -1221,7 +1115,7 @@
       ctx.save();
       ctx.translate(x, footY);
       ctx.rotate(tilt);
-      ctx.scale(2, 2);
+      ctx.scale(1.15, 1.15);
 
       // bacaklar
       const sw = m.moving ? Math.sin(m.step) * 2.6 : 0;
@@ -1230,7 +1124,7 @@
       ctx.beginPath(); ctx.moveTo(0, -bodyH + 2); ctx.lineTo(-1.4 + sw, 0); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, -bodyH + 2); ctx.lineTo(1.4 - sw, 0); ctx.stroke();
       // gövde (reflektörlü yelek)
-      ctx.fillStyle = "#2e3a4d";
+      ctx.fillStyle = "#f59739";
       rr(ctx, -2.4, -bodyH - 4, 4.8, bodyH, 2); ctx.fill();
       ctx.strokeStyle = "rgba(245,217,138,.65)";
       ctx.lineWidth = 0.7;
@@ -1263,34 +1157,22 @@
     }
 
     drawHUD(ctx) {
-      const off = this.status === "pasif";
-      const done = this.opPhase === "done";
-      const ledColors = { aktif: "#5dd97c", durak: "#ffb347", pasif: "#5d6470" };
-      const led = done ? "#5dd97c" : ledColors[this.status];
-      const blink = done ? 1 : (this.status === "aktif"
-        ? 0.6 + Math.abs(Math.sin(this.time * 3)) * 0.4
-        : this.status === "durak" ? (Math.sin(this.time * 5.2) > 0 ? 1 : 0.3) : 0.7);
-      ctx.fillStyle = led;
-      ctx.globalAlpha = blink;
-      ctx.beginPath(); ctx.arc(15, 17, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
-
-      if (!this.opts.showDepth) return;
-
-      const flash = this.depthFlash;
-      ctx.textAlign = "right";
-      ctx.font = "700 15px ui-monospace, 'IBM Plex Mono', Consolas, monospace";
-      ctx.fillStyle = flash > 0
-        ? `rgba(${lerp(245, 255, flash)},${lerp(185, 255, flash)},${lerp(66, 230, flash)},1)`
-        : (off ? "rgba(150,160,175,.85)" : "#f5b942");
-      ctx.fillText(this.displayDepth.toFixed(1) + " m", 190, 22);
-
-      ctx.textAlign = "left";
+      const P=PALETTES[this.opts.theme],state=this.getState();
+      if(this._ownsAria && this.canvas.getAttribute("aria-label")!==this.opts.machineName)this.canvas.setAttribute("aria-label",this.opts.machineName);
+      if(!this.opts.showDepth)return;
+      box(ctx,7,288,186,26,4,P.panel);
+      const percent=state.progress===null?null:Math.round(state.progress*100);
+      label(ctx,"DERİNLİK",14,296,4.3,P.muted,700);
+      ctx.font="700 10px ui-monospace,Consolas,monospace";ctx.fillStyle=P.ink;ctx.fillText(this.displayDepth.toFixed(1),14,308);
+      const length=ctx.measureText(this.displayDepth.toFixed(1)).width;label(ctx,"m",16+length,308,5.8,P.muted,600);
+      ctx.textAlign="right";label(ctx,this.opts.plannedDepth>0?"HEDEF "+this.opts.plannedDepth.toFixed(0)+" m":"HEDEF TANIMSIZ",185,296,4.3,P.muted,600);
+      label(ctx,percent===null?"—":percent+"%",185,307,8,P.ink,700);ctx.textAlign="left";
+      box(ctx,80,304,75,2.5,1,P.line);if(state.progress!==null)box(ctx,80,304,75*state.progress,2.5,1,this.opts.color);
     }
   }
 
   const RigAnim = {
-    version: "2.1.0",
+    version: "3.0.0",
     mount(canvasElement, options) {
       if (!canvasElement || !canvasElement.getContext) {
         throw new Error("RigAnim.mount requires a canvas element.");
