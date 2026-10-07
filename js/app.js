@@ -1232,6 +1232,7 @@ function ayarMakineRowHtml(m){
     <input class="fi" data-field="max" type="number" min="1" step="1" value="${esc(m.vardiyaMaxMetraj || 60)}" title="Vardiya maksimum metrajı">
     <input class="fi" data-field="aliases" value="${esc(aliases)}" placeholder="Eski adlar, virgülle">
     <label class="ayar-switch"><input data-field="aktif" type="checkbox" ${m.aktif ? 'checked' : ''}><span>Aktif</span></label>
+    <button class="btn btn-d ayar-machine-delete" type="button" aria-label="${esc(m.ad ? `${m.ad} makinesini sil` : 'Makineyi sil')}" onclick="removeAyarMakine(this)">Makineyi Sil</button>
   </div>`;
 }
 
@@ -1282,6 +1283,15 @@ function addAyarMakine(){
   const rows = wrap.querySelectorAll('[data-ayar-machine]');
   const input = rows.length ? rows[rows.length-1].querySelector('[data-field="ad"]') : null;
   if(input) input.focus();
+}
+
+function removeAyarMakine(button){
+  const row = button.closest('[data-ayar-machine]');
+  if(!row) return;
+  const input = row.querySelector('[data-field="ad"]');
+  const name = String(input.value || input.dataset.original || '').trim();
+  if(name && !confirm(`"${name}" makinesi ayar listesinden kaldırılsın mı?\n\nBu işlem operasyon kayıtlarını silmez. Değişiklik, Ayarları Kaydet düğmesine bastığınızda uygulanır.`)) return;
+  row.remove();
 }
 
 function ayarInputNum(el){
