@@ -1290,9 +1290,12 @@ function addAyarMakine(){
 function removeAyarMakine(button){
   const row = button.closest('[data-ayar-machine]');
   if(!row) return;
-  const input = row.querySelector('[data-field="ad"]');
-  const name = String(input.value || input.dataset.original || '').trim();
-  if(name && !confirm(`"${name}" makinesi ayar listesinden kaldırılsın mı?\n\nBu işlem operasyon kayıtlarını silmez. Değişiklik, Ayarları Kaydet düğmesine bastığınızda uygulanır.`)) return;
+  if(button.dataset.confirming !== 'true'){
+    button.dataset.confirming = 'true';
+    button.textContent = 'Emin misiniz?';
+    button.setAttribute('aria-label', 'Makineyi silmek için tekrar tıklayın');
+    return;
+  }
   row.remove();
 }
 
