@@ -4968,43 +4968,172 @@ delDurak = (id)=> requireAuth(()=>_delDurak(id));
 
 const _yeniAyBaslat = yeniAyBaslat;
 yeniAyBaslat = ()=> requireAuth(_yeniAyBaslat);
-function exportAy(){
+function excelTarihSeri(tarih){
+  const match = String(tarih || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!match) return '';
+  const [, yil, ay, gun] = match;
+  return Date.UTC(Number(yil), Number(ay)-1, Number(gun)) / 86400000 + 25569;
+}
+
+function exportMakineSatirlari(rec){
+  if(Array.isArray(rec.kuyular) && rec.kuyular.length){
+    return rec.kuyular.map(k=>{
+      const shifts = [null, null, null];
+      const vardiya = Number(rec.vardiya);
+      if(vardiya >= 1 && vardiya <= 3) shifts[vardiya-1] = parseFloat(k.ilerleme) || 0;
+      return {
+        lokasyon: rec.Lokasyon || rec.llokasyon || rec.lokasyon || '',
+        sondaj: k.no || '',
+        tarih: rec.tarih,
+        shifts,
+        depth: rec.depth,
+        durum: k.not || rec.not || ''
+      };
+    });
+  }
+  return [{
+    lokasyon: rec.Lokasyon || rec.llokasyon || rec.lokasyon || '',
+    sondaj: rec.sondaj || '',
+    tarih: rec.tarih,
+    shifts: [rec.s1, rec.s2, rec.s3].map(v => v == null || v === '' ? null : (parseFloat(v) || 0)),
+    depth: rec.depth,
+    durum: rec.not || ''
+  }];
+}
+
+function exportExcelMakineSayfasi(XLSX, makine, kayitlar){
+  const rows = [
+    [makine, 'LOKASYON', 'SONDAJ ADI', 'TARİH', 'FROM-TO', '', '', 'GÜNLÜK İLERLEME', 'DEPTH', 'DURUMU'],
+    ['', '', '', '', '24-08', '08-16', '16-24', '', '', '']
+  ];
+  const detaylar = kayitlar
+    .filter(r => makineEslesir(r.makine, makine))
+    .flatMap(exportMakineSatirlari)
+    .sort((a,b) => String(a.tarih).localeCompare(String(b.tarih)));
+  const aylikVardiya = [0, 0, 0];
+
+  detaylar.forEach(r=>{
+    const vardiyalar = r.shifts.map((v,i)=>{
+      if(v != null) aylikVardiya[i] += v;
+      return v == null ? '' : v;
+    });
+    const toplam = r.shifts.reduce((sum,v)=>sum+(v == null ? 0 : v),0);
+    rows.push([
+      '',
+      r.lokasyon,
+      r.sondaj,
+      excelTarihSeri(r.tarih),
+      ...vardiyalar,
+      toplam,
+      r.depth == null || r.depth === '' ? '' : (parseFloat(r.depth) || 0),
+      r.durum
+    ]);
+  });
+
+  rows.push([]);
+  const toplamRow = rows.length + 1;
+  rows.push(['', '', '', 'AYLIK İLERLEME TOPLAM=', '', '', '', aylikVardiya.reduce((sum,v)=>sum+v,0), '', '']);
+  rows.push([]);
+  rows.push(['VARDİYA PERFORMANS TABLOSU']);
+
+  const sonTarih = detaylar.reduce((son,r)=>r.tarih && r.tarih > son ? r.tarih : son, '');
+  const gunlukVardiya = [0, 0, 0];
+  detaylar.filter(r=>r.tarih === sonTarih).forEach(r=>{
+    r.shifts.forEach((v,i)=>{ if(v != null) gunlukVardiya[i] += v; });
+  });
+  const sonTarihLbl = sonTarih ? sonTarih.split('-').reverse().join('.') : '—';
+  rows.push(['VARDİYA', '', `GÜNLÜK METRE (${sonTarihLbl})`, '', 'AYLIK METRE']);
+  ['00:00 - 08:00', '08:00 - 16:00', '16:00 - 00:00'].forEach((label,i)=>{
+    rows.push([makine, label, gunlukVardiya[i], '', aylikVardiya[i]]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:14}, {wch:25}, {wch:24}, {wch:13}, {wch:12},
+    {wch:12}, {wch:12}, {wch:20}, {wch:13}, {wch:55}
+  ];
+  for(let row=3; row<=detaylar.length+2; row++){
+    const dateCell = ws[`D${row}`];
+    if(dateCell && dateCell.v !== '') dateCell.z = 'dd.mm.yyyy';
+    ['E','F','G','H','I'].forEach(col=>{
+      const cell = ws[`${col}${row}`];
+      if(cell && typeof cell.v === 'number') cell.z = '0.00';
+    });
+  }
+  const totalCell = ws[`H${toplamRow}`];
+  if(totalCell) totalCell.z = '0.00';
+  return ws;
+}
+
+async function exportAy(){
+  const exportMonth = aktifAy;
   const ayLbl = document.getElementById('sel-ay');
   const ayAdi = ayLbl.options[ayLbl.selectedIndex].text;
   const ayRecs = db.gunluk.filter(r=>ayFiltre(r.tarih));
   const ayDurak = db.duraklamalar.filter(d=>ayFiltre(d.tarih));
-  const csvRow = values => values.map(value =>
-    `"${String(value ?? '').replace(/"/g,'""')}"`
-  ).join(',') + '\n';
-
-  let csv = `${appReportHead()} · ${getAppSettings().firma.uygulamaAdi.toLocaleUpperCase('tr-TR')} · ${ayAdi} Export\n\n`;
-  csv += `GÜNLÜK DELGİ KAYITLARI\n`;
-  csv += `Makine,Tarih,Vardiya,Kuyu No,İlerleme (m),Not\n`;
-  ayRecs.forEach(r=>{
-    if(Array.isArray(r.kuyular) && r.kuyular.length){
-      r.kuyular.forEach(k=>{
-        csv += csvRow([r.makine, r.tarih, VRD_LABEL[r.vardiya]||'', k.no, k.ilerleme||0, k.not||r.not||'']);
+  try{
+    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+    const workbook = XLSX.utils.book_new();
+    const machineNames = [];
+    [...MAKINELER, ...getAppSettings().makineler.map(m=>m.ad), ...ayRecs.map(r=>r.makine)]
+      .filter(Boolean)
+      .forEach(name=>{
+        if(!machineNames.some(existing=>makineEslesir(existing,name))) machineNames.push(name);
       });
-      return;
-    }
-    [1, 2, 3].forEach(vardiya=>{
-      const ilerleme = r[`s${vardiya}`];
-      if(ilerleme == null) return;
-      csv += csvRow([r.makine, r.tarih, VRD_LABEL[vardiya], r.sondaj||'', ilerleme, r.not||'']);
+    machineNames.forEach(makine=>{
+      XLSX.utils.book_append_sheet(workbook, exportExcelMakineSayfasi(XLSX, makine, ayRecs), makine.slice(0,31));
     });
-  });
 
-  csv += `\nDURAKLAMA KAYITLARI\n`;
-  csv += `Makine,Tarih,Vardiya,Sondaj No,Neden,Süre (dk)\n`;
-  ayDurak.forEach(d=>{
-    csv += csvRow([d.makine, d.tarih, VRD_LABEL[d.vardiya]||'', d.sondaj||'', d.neden||'', d.dk||0]);
-  });
+    const durakRows = [
+      [`${appReportHead()} · ${ayAdi} YERALTI DURAKLAMALARI`],
+      ['MAKİNE', 'TARİH', 'SONDAJ NO', 'DURAKLAMA NEDENİ', '24-08', '08-16', '16-24', 'TOPLAM DURAKLAMA (DAKİKA)', 'SAAT ARALIKLARI', 'AÇIKLAMA']
+    ];
+    ayDurak.slice().sort((a,b)=>String(a.tarih).localeCompare(String(b.tarih))).forEach(d=>{
+      const vardiyalar = [null, null, null];
+      const vardiya = Number(d.vardiya);
+      if(vardiya >= 1 && vardiya <= 3) vardiyalar[vardiya-1] = parseFloat(d.dk) || 0;
+      const bas = d.basSaat || d.bas_saat || '';
+      const bit = d.bitSaat || d.bit_saat || '';
+      durakRows.push([
+        d.makine || '',
+        excelTarihSeri(d.tarih),
+        d.sondaj || '',
+        d.neden || '',
+        ...vardiyalar.map(v=>v == null ? '' : v),
+        parseFloat(d.dk) || 0,
+        bas && bit ? `${bas}-${bit}` : '',
+        temizDuraklamaAciklama(d.aciklama)
+      ]);
+    });
+    const durakWs = XLSX.utils.aoa_to_sheet(durakRows);
+    durakWs['!cols'] = [
+      {wch:17}, {wch:13}, {wch:20}, {wch:28}, {wch:12},
+      {wch:12}, {wch:12}, {wch:26}, {wch:22}, {wch:60}
+    ];
+    for(let row=3; row<=durakRows.length; row++){
+      const dateCell = durakWs[`B${row}`];
+      if(dateCell && dateCell.v !== '') dateCell.z = 'dd.mm.yyyy';
+    }
+    XLSX.utils.book_append_sheet(workbook, durakWs, 'YERALTI DURAKLAMALAR');
 
-  indir(csv, `DDH_Takip_${aktifAy}.csv`);
+    const file = XLSX.write(workbook, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([file], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `DDH_Takip_${exportMonth}.xlsx`;
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    return true;
+  }catch(error){
+    console.error('Excel dışa aktarma hatası:', error);
+    showToast('Excel dışa aktarılamadı', error && error.message ? error.message : 'Beklenmeyen hata');
+    return false;
+  }
 }
 
 // ── YENİ AY BAŞLAT ──────────────────────────────────────────
-function yeniAyBaslat(){
+async function yeniAyBaslat(){
   const sel = document.getElementById('sel-ay');
   const curr = sel.value;
   const [yil, ay] = curr.split('-').map(Number);
@@ -5023,7 +5152,7 @@ function yeniAyBaslat(){
     `Önce mevcut ay export edilecek. Devam?`
   )) return;
 
-  exportAy();
+  if(!await exportAy()) return;
   db.gunluk = [];
   db.duraklamalar = [];
 
