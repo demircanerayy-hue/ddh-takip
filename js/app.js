@@ -4973,27 +4973,34 @@ function exportAy(){
   const ayAdi = ayLbl.options[ayLbl.selectedIndex].text;
   const ayRecs = db.gunluk.filter(r=>ayFiltre(r.tarih));
   const ayDurak = db.duraklamalar.filter(d=>ayFiltre(d.tarih));
+  const csvRow = values => values.map(value =>
+    `"${String(value ?? '').replace(/"/g,'""')}"`
+  ).join(',') + '\n';
 
   let csv = `${appReportHead()} · ${getAppSettings().firma.uygulamaAdi.toLocaleUpperCase('tr-TR')} · ${ayAdi} Export\n\n`;
   csv += `GÜNLÜK DELGİ KAYITLARI\n`;
   csv += `Makine,Tarih,Vardiya,Kuyu No,İlerleme (m),Not\n`;
   ayRecs.forEach(r=>{
-    (r.kuyular||[]).forEach(k=>{
-      csv += `${r.makine},${r.tarih},${VRD_LABEL[r.vardiya]||''},${k.no},${k.ilerleme||0},"${(k.not||r.not||'').replace(/"/g,'""')}"\n`;
+    if(Array.isArray(r.kuyular) && r.kuyular.length){
+      r.kuyular.forEach(k=>{
+        csv += csvRow([r.makine, r.tarih, VRD_LABEL[r.vardiya]||'', k.no, k.ilerleme||0, k.not||r.not||'']);
+      });
+      return;
+    }
+    [1, 2, 3].forEach(vardiya=>{
+      const ilerleme = r[`s${vardiya}`];
+      if(ilerleme == null) return;
+      csv += csvRow([r.makine, r.tarih, VRD_LABEL[vardiya], r.sondaj||'', ilerleme, r.not||'']);
     });
   });
 
   csv += `\nDURAKLAMA KAYITLARI\n`;
   csv += `Makine,Tarih,Vardiya,Sondaj No,Neden,Süre (dk)\n`;
   ayDurak.forEach(d=>{
-    csv += `${d.makine},${d.tarih},${VRD_LABEL[d.vardiya]||''},${d.sondaj||''},${d.neden||''},${d.dk||0}\n`;
+    csv += csvRow([d.makine, d.tarih, VRD_LABEL[d.vardiya]||'', d.sondaj||'', d.neden||'', d.dk||0]);
   });
 
-  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `DDH_Takip_${aktifAy}.csv`;
-  a.click();
+  indir(csv, `DDH_Takip_${aktifAy}.csv`);
 }
 
 // ── YENİ AY BAŞLAT ──────────────────────────────────────────
