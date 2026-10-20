@@ -3673,7 +3673,7 @@ function currentHakedisPricing(){
   return {tarifeler:cloneJson(cfg.tarifeler),finans:cloneJson(cfg.finans),tarih:new Date().toISOString()};
 }
 
-function hakedisTariffForDate(tariffKey, date, fiyatSnapshot){
+function hakedisTariffForDate(tariffKey, date, fiyatSnapshot, kuyuNo){
   const dateBeforeDiscount = !!date && date < OPEX_DISCOUNT_START_DATE;
   const snapshotDate = fiyatSnapshot && String(fiyatSnapshot.tarih || '').slice(0,10);
   const snapshotMatchesPeriod = !!snapshotDate && (
@@ -3684,6 +3684,11 @@ function hakedisTariffForDate(tariffKey, date, fiyatSnapshot){
   const sourceTariff = snapshotMatchesPeriod && snapshotTariffs
     ? (snapshotTariffs[tariffKey] || OPEX_TARIFFS[tariffKey])
     : OPEX_TARIFFS[tariffKey];
+  if(kuyuNo === 'BYA-947' && /^\d{4}-07-\d{2}$/.test(date) && date.startsWith('2026-07')){
+    return Object.assign({},sourceTariff,{
+      rates:sourceTariff.rates.map(band=>Object.assign({},band,{rate:70}))
+    });
+  }
   return opexTariffForDate(sourceTariff, date, dateBeforeDiscount && !snapshotMatchesPeriod);
 }
 
@@ -3975,7 +3980,7 @@ function hakedisBuildRecords(){
     const bands = [];
     metrajRows.forEach(row=>{
       const rowMetraj = row.metre * metrajScale;
-      const tariff = hakedisTariffForDate(tariffKey, row.tarih, fiyatSnapshot);
+      const tariff = hakedisTariffForDate(tariffKey, row.tarih, fiyatSnapshot, no);
       opexDrillingParts(rowMetraj, d, tariff).forEach(part=>{
         const from = d;
         const to = d + part.metre;
