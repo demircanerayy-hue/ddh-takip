@@ -3684,7 +3684,7 @@ function hakedisTariffForDate(tariffKey, date, fiyatSnapshot, kuyuNo){
   const sourceTariff = snapshotMatchesPeriod && snapshotTariffs
     ? (snapshotTariffs[tariffKey] || OPEX_TARIFFS[tariffKey])
     : OPEX_TARIFFS[tariffKey];
-  if(kuyuNo === 'BYA-947' && /^\d{4}-07-\d{2}$/.test(date) && date.startsWith('2026-07')){
+  if(kuyuNo === 'BYA-947'){
     return Object.assign({},sourceTariff,{
       rates:sourceTariff.rates.map(band=>Object.assign({},band,{rate:70}))
     });
