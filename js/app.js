@@ -3536,6 +3536,7 @@ let hakedisStatusLoaded = false;
 const HAKEDIS_STORE_KEY = 'hakedis_durum_v1';
 const HAKEDIS_DEFAULT_DURUM = 'Taslak';
 const HAKEDIS_TEST_APPROVER_EMAILS = ['eray.demircan@gumustasmaden.com.tr'];
+const hakedisArsivler = [];
 
 // ── Finansal sabitler (merkezi; ileride değiştirilebilir) ──
 let HAKEDIS_KDV_ORANI = 0.20;         // KDV oranı — Ayarlar'dan güncellenebilir
@@ -3579,12 +3580,17 @@ function hakedisLoadStatus(){
     if(obj.olcum) Object.assign(hakedisOlcumMap, obj.olcum);
     if(obj.metraj) Object.assign(hakedisMetrajMap, obj.metraj);
     if(obj.fiyatSnapshot) Object.assign(hakedisFiyatSnapshotMap, obj.fiyatSnapshot);
+    if(Array.isArray(obj.arsivler)){
+      hakedisArsivler.splice(0,hakedisArsivler.length,...obj.arsivler.filter(snapshot=>
+        snapshot && typeof snapshot.id === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(snapshot.ay) && Array.isArray(snapshot.rows)
+      ));
+    }
     if(typeof obj.kur === 'number' && isFinite(obj.kur) && obj.kur > 0) hakedisKur = obj.kur;
   }catch(e){ /* güvenli yut */ }
 }
 
 function hakedisStateValue(){
-  return {durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, metraj:hakedisMetrajMap, fiyatSnapshot:hakedisFiyatSnapshotMap, kur:hakedisKur};
+  return {durum:hakedisStatusMap, meta:hakedisMetaMap, kesinti:hakedisKesintiMap, topluKesinti:hakedisTopluKesinti, olcum:hakedisOlcumMap, metraj:hakedisMetrajMap, fiyatSnapshot:hakedisFiyatSnapshotMap, arsivler:hakedisArsivler, kur:hakedisKur};
 }
 
 function hakedisSaveStatus(){
@@ -4025,6 +4031,157 @@ function hakedisKontrolBekleyenleri(){
   if(machine) machine.value = '';
   if(status) status.value = 'Kontrol Bekliyor';
   renderHakedis();
+}
+
+function hakedisArsivSatirlariHazirla(records){
+  const sharedCut = records.length > 1 ? hakedisTopluKesintiToplam().toplam : 0;
+  const grossTotal = records.reduce((sum,rec)=>sum+(Number(rec.brut)||0),0);
+  return records.map((rec,index)=>{
+    const share = records.length > 1
+      ? (grossTotal > 0 ? (Number(rec.brut)||0)/grossTotal : (index===0 ? 1 : 0))
+      : 0;
+    const kesinti = records.length > 1
+      ? {
+          elektrik:(Number(hakedisTopluKesinti.elektrik)||0)*share,
+          motorin:(Number(hakedisTopluKesinti.motorin)||0)*share,
+          servis:(Number(hakedisTopluKesinti.servis)||0)*share
+        }
+      : Object.assign({},hakedisKesintiOf(rec.no));
+    const finans = hakedisFinans(
+      rec.brut,
+      records.length > 1 ? sharedCut*share : kesinti.toplam,
+      hakedisKur,
+      rec.kdvOrani,
+      rec.tevkifatOrani
+    );
+    return {
+      kayit:cloneJson(rec),
+      kesinti:cloneJson(kesinti),
+      finans:cloneJson(finans)
+    };
+  });
+}
+
+function hakedisArsivBolgeEtiketi(rec){
+  if(rec.locGroup === 'Bolkar 1') return 'Bolkar-1';
+  if(rec.locGroup === 'Bolkar 2') return 'Bolkar-2';
+  return rec.locGroup || 'Tanımsız';
+}
+
+function hakedisArsivKaydet(){
+  const monthInput = document.getElementById('hakedis-arsiv-ay');
+  const message = document.getElementById('hakedis-arsiv-msg');
+  const ay = String(monthInput && monthInput.value || '').trim();
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ay)){
+    if(message){ message.textContent='Geçerli bir hakediş ayı seçin.'; message.className='ayar-msg error'; }
+    return;
+  }
+  if(!hakedisSelectedKuyular.length){
+    if(message){ message.textContent='Arşivlemek için kuyu seçim menüsünden bir veya daha fazla kuyu seçin.'; message.className='ayar-msg error'; }
+    return;
+  }
+  const records = hakedisBuildRecords().filter(rec=>hakedisSelectedKuyular.includes(rec.no));
+  if(!records.length){
+    if(message){ message.textContent='Seçilen kuyular için hakediş kaydı bulunamadı.'; message.className='ayar-msg error'; }
+    return;
+  }
+  const samePeriod = hakedisArsivler.filter(snapshot=>snapshot.ay===ay);
+  const byRegion = new Map();
+  records.forEach((rec,index)=>{
+    const region=hakedisArsivBolgeEtiketi(rec);
+    if(!byRegion.has(region)) byRegion.set(region,[]);
+    byRegion.get(region).push(index);
+  });
+  const regionNames=[...byRegion.keys()];
+  const repeatedRegions=regionNames.filter(region=>
+    samePeriod.some(snapshot=>snapshot.bolge===region)
+  );
+  const confirmText = `${records.length} seçili kuyu ${ay} dönemi için bölgelere göre ${regionNames.length} ayrı arşiv kaydı olarak saklanacak (${regionNames.join(', ')}).${repeatedRegions.length?' Aynı bölge ve dönem için önceki arşivler korunup yeni sürüm eklenecek.':''} Devam edilsin mi?`;
+  if(!window.confirm(confirmText)) return;
+  const allRows = hakedisArsivSatirlariHazirla(records);
+  const createdAt=new Date().toISOString();
+  const createdBy=hakedisCurrentUser();
+  const batchId=`${ay}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  byRegion.forEach((indexes,bolge)=>{
+    const rows=indexes.map(index=>allRows[index]);
+    const regionRecords=indexes.map(index=>records[index]);
+    const totals=hakedisFinansSum(rows.map(row=>row.finans));
+    hakedisArsivler.push({
+      id:`${batchId}-${encodeURIComponent(bolge)}`,
+      ay,
+      bolge,
+      createdAt,
+      createdBy,
+      kur:hakedisKur,
+      paylasilanKesinti:records.length>1 ? cloneJson(hakedisTopluKesinti) : null,
+      toplamMetraj:regionRecords.reduce((sum,rec)=>sum+(Number(rec.metraj)||0),0),
+      toplamBrutUsd:regionRecords.reduce((sum,rec)=>sum+(Number(rec.brut)||0),0),
+      toplamDuraklamaDakika:regionRecords.reduce((sum,rec)=>sum+(Number(rec.durakMin)||0),0),
+      toplamOlcumMetraj:regionRecords.reduce((sum,rec)=>sum+(Number(rec.kuyuIciMetraj)||0),0),
+      totals:cloneJson(totals),
+      rows
+    });
+  });
+  hakedisSaveStatus();
+  renderHakedisArsiv();
+  if(message){ message.textContent=`${records.length} kuyu ${regionNames.length} bölge başlığı altında ${ay} hakediş arşivine kaydedildi.`; message.className='ayar-msg ok'; }
+}
+
+function renderHakedisArsiv(records){
+  const wrap = document.getElementById('hakedis-arsiv-list');
+  const monthInput = document.getElementById('hakedis-arsiv-ay');
+  const selection = document.getElementById('hakedis-arsiv-secim');
+  if(!wrap) return;
+  const selectedCount=(records || hakedisBuildRecords()).filter(rec=>hakedisSelectedKuyular.includes(rec.no)).length;
+  if(selection) selection.textContent=selectedCount ? `${selectedCount} kuyu seçili` : 'Arşiv için kuyuları seçim menüsünden seçin.';
+  if(monthInput && !monthInput.value) monthInput.value=_bugunAy;
+  const snapshots = [...hakedisArsivler].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+  if(!snapshots.length){
+    wrap.innerHTML='<div class="ozet-empty">Henüz arşivlenmiş aylık hakediş yok. Kuyuları seçip “Seçili Kuyuları Arşivle” düğmesini kullanın.</div>';
+    return;
+  }
+  wrap.innerHTML=snapshots.map(snapshot=>{
+    const monthLabel=new Date(`${snapshot.ay}-01T00:00:00`).toLocaleDateString('tr-TR',{year:'numeric',month:'long'});
+    const savedAt=snapshot.createdAt ? new Date(snapshot.createdAt).toLocaleString('tr-TR') : 'Tarih yok';
+    const totals=snapshot.totals || {};
+    const netLabel=totals.valid ? hakedisFmtTl(totals.netOdenecekTl) : 'Kur girilmemiş';
+    const rows=(snapshot.rows||[]).map(row=>{
+      const rec=row.kayit||{};
+      const finance=row.finans||{};
+      return `<tr>
+        <td>${esc(rec.no||'-')}</td>
+        <td>${esc(rec.makine||'-')}</td>
+        <td>${esc(rec.locGroup||'-')}</td>
+        <td class="c">${ozetFmt(rec.metraj,1)} m</td>
+        <td class="c">${opexFmtUsd(rec.brut)}</td>
+        <td class="c">${opexFmtUsd(rec.waiting)}</td>
+        <td class="c">${ozetFmt(rec.kuyuIciMetraj,1)} m</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.hakedisTl):'Kur girilmemiş'}</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.kesintiTl):'Kur girilmemiş'}</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.netHakedisTl):'Kur girilmemiş'}</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.kdvTl):'Kur girilmemiş'}</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.tevkifatTutariTl):'Kur girilmemiş'}</td>
+        <td class="c">${finance.valid?hakedisFmtTl(finance.netOdenecekTl):'Kur girilmemiş'}</td>
+        <td>${hakedisBadge(rec.durum||'Taslak')}</td>
+      </tr>`;
+    }).join('');
+    return `<details class="ozet-panel" style="margin:0 0 10px">
+      <summary style="cursor:pointer;list-style:none">
+        <div style="display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+          <strong>${esc(snapshot.bolge||'Bölge belirtilmemiş')} · ${esc(monthLabel)} · ${snapshot.rows.length} kuyu</strong>
+          <span>${ozetFmt(snapshot.toplamMetraj,1)} m · ${opexFmtUsd(snapshot.toplamBrutUsd)} · Net ödenecek: ${netLabel}</span>
+          <small>${esc(savedAt)} · ${esc(snapshot.createdBy||'Kullanıcı bilgisi yok')}</small>
+        </div>
+      </summary>
+      <div style="margin-top:12px;overflow:auto">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Arşiv anındaki kur: ${snapshot.kur>0?hakedisFmtKur(snapshot.kur):'girilmemiş'} · Toplam duraklama: ${ozetFmt(snapshot.toplamDuraklamaDakika,0)} dk · Kuyu içi ölçüm: ${ozetFmt(snapshot.toplamOlcumMetraj,1)} m</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th>Kuyu</th><th>Makine</th><th>Lokasyon</th><th class="c">Metraj</th><th class="c">Brüt USD</th><th class="c">Bekleme USD</th><th class="c">Ölçüm m</th><th class="c">Hakediş TL</th><th class="c">Kesinti TL</th><th class="c">Net Hakediş TL</th><th class="c">KDV TL</th><th class="c">Tevkifat TL</th><th class="c">Net Ödenecek TL</th><th>Durum</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>`;
+  }).join('');
 }
 
 // ── HAKEDİŞ ONAY AKIŞI ──────────────────────────────────────
@@ -4716,6 +4873,7 @@ function renderHakedis(){
     renderHakedisSummaryTable(rows);
     renderHakedisFinans('all', rows);
   }
+  renderHakedisArsiv(records);
 }
 
 function hakedisDetailCsv(rec){
@@ -5798,6 +5956,7 @@ window.setOzetFilter = setOzetFilter;
 window.setOzetRange = setOzetRange;
 window.renderHakedis = renderHakedis;
 window.hakedisKontrolBekleyenleri = hakedisKontrolBekleyenleri;
+window.hakedisArsivKaydet = hakedisArsivKaydet;
 window.exportHakedis = exportHakedis;
 window.setHakedisLocation = setHakedisLocation;
 window.toggleHakedisKuyuMenu = toggleHakedisKuyuMenu;

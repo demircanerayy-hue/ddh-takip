@@ -414,6 +414,20 @@
   </div>
 
   <div id="hakedis-finans-wrap"></div>
+
+  <section class="ozet-panel" id="hakedis-arsiv-panel">
+    <div class="ozet-panel-head">
+      <div><span>GEÇMİŞ HAKEDİŞLER</span><strong>Aylık hakediş arşivi</strong></div>
+      <small>Seçili kuyular aynı ay etiketiyle, bulundukları bölgeye göre ayrı arşiv kayıtlarında saklanır.</small>
+    </div>
+    <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:12px 0">
+      <label class="ff"><span class="fl" for="hakedis-arsiv-ay">Hakediş Ayı</span><input class="fi" type="month" id="hakedis-arsiv-ay"></label>
+      <button class="btn btn-p" type="button" onclick="hakedisArsivKaydet()">Seçili Kuyuları Arşivle</button>
+      <span id="hakedis-arsiv-secim" style="font-size:12px;color:var(--text2)"></span>
+      <span id="hakedis-arsiv-msg" class="ayar-msg" aria-live="polite"></span>
+    </div>
+    <div id="hakedis-arsiv-list"></div>
+  </section>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
