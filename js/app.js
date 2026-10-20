@@ -239,6 +239,7 @@ function filtreliDurak(){
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBED0e8g8qUcWozK_hr46fFHBB6IairBwM",
@@ -253,6 +254,7 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const fbDb  = getDatabase(fbApp);
 const fbAuth = getAuth(fbApp);
+const fbFunctions = getFunctions(fbApp, 'europe-west1');
 const dbRef = ref(fbDb, 'data');
 
 function setStatus(ok, msg){
@@ -575,6 +577,7 @@ function load(){
     setStatus(false, '● Yerel veri yüklendi · Firebase bekleniyor');
   }
   renderAll();
+  applyHakedisEmailRoute();
 
   getWithTimeout(dbRef).then(snapshot => {
     const data = snapshot.val();
@@ -599,6 +602,7 @@ function load(){
     const _selAy = document.getElementById('sel-ay');
     if(_selAy && _bugunAy) _selAy.value = _bugunAy;
     renderAll();
+    applyHakedisEmailRoute();
   }).catch(e => {
     console.error('Yükleme hatası:', e);
     const local = readLocalBackup();
@@ -610,6 +614,7 @@ function load(){
       db.gunluk = [...PRELOADED_GUNLUK];
     }
     renderAll();
+    applyHakedisEmailRoute();
   });
 }
 
@@ -1679,6 +1684,35 @@ function goPage(id, el){
   if(id==='hakedis') renderHakedis();
   if(id==='ozet'){ loadButce(); renderOzetPage(); }
   if(id==='ayarlar') renderAyarlar();
+}
+
+let hakedisEmailRouteApplied = false;
+let hakedisEmailRouteKuyu = '';
+let hakedisEmailRouteScrolled = false;
+
+function scrollHakedisEmailRouteTarget(){
+  if(!hakedisEmailRouteKuyu || hakedisEmailRouteScrolled) return;
+  const row = [...document.querySelectorAll('#hakedis-table-wrap tbody tr')]
+    .find(tr=>tr.cells[0] && tr.cells[0].textContent.trim() === hakedisEmailRouteKuyu);
+  if(!row) return;
+  hakedisEmailRouteScrolled = true;
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function applyHakedisEmailRoute(){
+  if(hakedisEmailRouteApplied) return;
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('page') !== 'hakedis' || params.get('durum') !== 'Kontrol Bekliyor') return;
+  const status = document.getElementById('hakedis-durum-sec');
+  if(status) status.value = 'Kontrol Bekliyor';
+  hakedisEmailRouteKuyu = params.get('kuyu') || '';
+  hakedisSelectedKuyular = [];
+  const tab = [...document.querySelectorAll('.tabs .tab')]
+    .find(el=>String(el.getAttribute('onclick')||'').includes("'hakedis'"));
+  if(!tab) return;
+  hakedisEmailRouteApplied = true;
+  goPage('hakedis',tab);
+  setTimeout(scrollHakedisEmailRouteTarget,0);
 }
 
 // ── DASHBOARD ───────────────────────────────────────────────
@@ -3501,6 +3535,7 @@ const hakedisOpenDetails = new Set();  // çoklu görünümde açık detay satı
 let hakedisStatusLoaded = false;
 const HAKEDIS_STORE_KEY = 'hakedis_durum_v1';
 const HAKEDIS_DEFAULT_DURUM = 'Taslak';
+const HAKEDIS_TEST_APPROVER_EMAILS = ['eray.demircan@gumustasmaden.com.tr'];
 
 // ── Finansal sabitler (merkezi; ileride değiştirilebilir) ──
 let HAKEDIS_KDV_ORANI = 0.20;         // KDV oranı — Ayarlar'dan güncellenebilir
@@ -3513,6 +3548,7 @@ const hakedisOlcumMap = {};            // kuyuNo -> kuyu içi ölçüm metrajı 
 const hakedisMetrajMap = {};           // kuyuNo -> manuel hakediş metrajı + düzeltme geçmişi
 const hakedisFiyatSnapshotMap = {};     // kuyuNo -> kontrol anındaki tarife/finans ayarları
 let hakedisMetrajEditNo = '';
+let hakedisNotificationInFlight = false;
 
 // Lokasyon/kuyu adından grup belirleyen güvenli helper
 function getLocationGroup(value){
@@ -3979,6 +4015,18 @@ function setHakedisLocation(val){
   renderHakedis();
 }
 
+function hakedisKontrolBekleyenleri(){
+  hakedisSelectedKuyular = [];
+  hakedisLocationFilter = '';
+  const location = document.getElementById('hakedis-loc-sec');
+  const machine = document.getElementById('hakedis-mak-sec');
+  const status = document.getElementById('hakedis-durum-sec');
+  if(location) location.value = '';
+  if(machine) machine.value = '';
+  if(status) status.value = 'Kontrol Bekliyor';
+  renderHakedis();
+}
+
 // ── HAKEDİŞ ONAY AKIŞI ──────────────────────────────────────
 // durum -> [ [buton etiketi, hedef durum, buton stili] ]
 function hakedisFlow(durum){
@@ -4014,17 +4062,82 @@ function hakedisActionsHtml(no, durum){
   return `${hakedisBadge(durum)}${btns ? ' ' + btns : ' <span style="font-size:11px;color:var(--text3);font-weight:700">Süreç tamamlandı</span>'}`;
 }
 
-function hakedisAction(no, toDurum){
+function hakedisApproverMi(){
+  const email = String(fbAuth.currentUser && fbAuth.currentUser.email || '').trim().toLocaleLowerCase('en-US');
+  return HAKEDIS_TEST_APPROVER_EMAILS.includes(email);
+}
+
+function hakedisNotificationLink(no){
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('page','hakedis');
+  url.searchParams.set('durum','Kontrol Bekliyor');
+  if(no) url.searchParams.set('kuyu',no);
+  return url.toString();
+}
+
+async function hakedisKontrolMailiGonder(records){
+  const user = fbAuth.currentUser;
+  if(!user) throw new Error('Bildirim göndermek için uygulamaya giriş yapmalısınız.');
+  if(hakedisNotificationInFlight) throw new Error('Bir kontrol e-postası zaten gönderiliyor.');
+  hakedisNotificationInFlight = true;
+  try{
+    const callable = httpsCallable(fbFunctions,'sendHakedisApprovalEmail');
+    const link = hakedisNotificationLink(records.length === 1 ? records[0].no : '');
+    const result = await callable({
+      appUrl:link,
+      items:records.map(rec=>({
+        kuyu:rec.no,
+        makine:rec.makine,
+        lokasyon:rec.locGroup,
+        metraj:rec.metraj,
+        brutUsd:rec.brut,
+        netUsd:rec.net
+      }))
+    });
+    if(!result || !result.data || result.data.sent !== true){
+      throw new Error('Bildirim servisi e-postanın gönderildiğini doğrulayamadı.');
+    }
+  }finally{
+    hakedisNotificationInFlight = false;
+  }
+}
+
+async function hakedisAction(no, toDurum){
   const user = ((document.getElementById('auth-user')?.textContent) || '').trim() || '-';
   const bugun = new Date().toISOString().slice(0,10);
   const meta = Object.assign({}, hakedisMetaMap[no] || {});
+  if(toDurum === 'Onaylandı' || toDurum === 'Revize İstendi'){
+    if(!hakedisApproverMi()){
+      alert('Bu hakedişi yalnızca tanımlı onay yetkilisi sonuçlandırabilir.');
+      return;
+    }
+  }
   if(toDurum === 'Revize İstendi'){
-    const note = window.prompt('Revizyon notu (opsiyonel):', meta.revizeNot || '');
+    const note = window.prompt('Revizyon notu:', meta.revizeNot || '');
     if(note === null) return; // iptal edildi
+    if(!note.trim()){
+      alert('Revizyon isterken açıklama girmek zorunludur.');
+      return;
+    }
     meta.revizeNot = note.trim();
     delete hakedisFiyatSnapshotMap[no];
   }
-  if(toDurum === 'Kontrol Bekliyor') ensureHakedisFiyatSnapshot(no);
+  if(toDurum === 'Kontrol Bekliyor'){
+    const rec = hakedisBuildRecords().find(row=>row.no===no);
+    if(!rec){ alert('Hakediş kaydı bulunamadı; bildirim gönderilmedi.'); return; }
+    try{
+      await hakedisKontrolMailiGonder([rec]);
+    }catch(e){
+      console.error('Hakediş onay e-postası gönderilemedi:',e);
+      alert('Kontrol bildirimi gönderilemedi. Hakediş durumu değiştirilmedi. ' + (e.message || 'E-posta servisini kontrol edin.'));
+      return;
+    }
+    ensureHakedisFiyatSnapshot(no);
+    meta.kontroleGonderen = user;
+    meta.kontroleGonderimTarihi = new Date().toISOString();
+  }
   if(toDurum === 'Onaylandı'){ meta.onaylayan = user; meta.onayTarihi = bugun; }
   if(toDurum === 'Faturaya Aktarıldı'){ meta.faturaTarihi = bugun; }
   if(toDurum === 'Ödendi'){ meta.odemeTarihi = bugun; }
@@ -4051,13 +4164,30 @@ function hakedisUndo(no){
   renderHakedis();
 }
 
-function hakedisBulkKontrol(){
-  let changed = false;
-  hakedisSelectedKuyular.forEach(no => {
-    const cur = hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM;
-    if(cur === 'Taslak'){ ensureHakedisFiyatSnapshot(no); hakedisStatusMap[no] = 'Kontrol Bekliyor'; changed = true; }
+async function hakedisBulkKontrol(){
+  const records = hakedisBuildRecords().filter(rec=>
+    hakedisSelectedKuyular.includes(rec.no) && rec.durum === 'Taslak'
+  );
+  if(!records.length) return;
+  try{
+    await hakedisKontrolMailiGonder(records);
+  }catch(e){
+    console.error('Toplu hakediş onay e-postası gönderilemedi:',e);
+    alert('Kontrol bildirimi gönderilemedi. Hakediş durumları değiştirilmedi. ' + (e.message || 'E-posta servisini kontrol edin.'));
+    return;
+  }
+  const sentAt = new Date().toISOString();
+  const sentBy = ((document.getElementById('auth-user')?.textContent) || '').trim() || '-';
+  records.forEach(rec=>{
+    ensureHakedisFiyatSnapshot(rec.no);
+    hakedisStatusMap[rec.no] = 'Kontrol Bekliyor';
+    hakedisMetaMap[rec.no] = Object.assign({},hakedisMetaMap[rec.no]||{},{
+      kontroleGonderen:sentBy,
+      kontroleGonderimTarihi:sentAt
+    });
   });
-  if(changed){ hakedisSaveStatus(); renderHakedis(); }
+  hakedisSaveStatus();
+  renderHakedis();
 }
 
 function hakedisToggleDetail(no){
@@ -4143,6 +4273,8 @@ function renderHakedisInfo(rec){
 function hakedisMetaHtml(meta){
   const m = meta || {};
   const parts = [];
+  if(m.kontroleGonderen) parts.push(`Kontrole gönderen: ${esc(m.kontroleGonderen)}`);
+  if(m.kontroleGonderimTarihi) parts.push(`Gönderim: ${new Date(m.kontroleGonderimTarihi).toLocaleString('tr-TR')}`);
   if(m.onaylayan) parts.push(`Onaylayan: ${esc(m.onaylayan)}`);
   if(m.onayTarihi) parts.push(`Onay: ${hakedisFmtDate(m.onayTarihi)}`);
   if(m.revizeNot) parts.push(`Revizyon notu: ${esc(m.revizeNot)}`);
@@ -5604,6 +5736,10 @@ function renderAll(){
   renderDash();
   renderKuyular();
   renderVardiyaPerf();
+  if(document.getElementById('page-hakedis').classList.contains('active')){
+    renderHakedis();
+    scrollHakedisEmailRouteTarget();
+  }
   if(document.getElementById('page-gunluk').classList.contains('active')){
     buildMakPages(); renderMak(aktifMakine);
   }
@@ -5661,6 +5797,7 @@ window.renderOzetPage = renderOzetPage;
 window.setOzetFilter = setOzetFilter;
 window.setOzetRange = setOzetRange;
 window.renderHakedis = renderHakedis;
+window.hakedisKontrolBekleyenleri = hakedisKontrolBekleyenleri;
 window.exportHakedis = exportHakedis;
 window.setHakedisLocation = setHakedisLocation;
 window.toggleHakedisKuyuMenu = toggleHakedisKuyuMenu;

@@ -396,6 +396,7 @@
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;align-items:center">
+      <button class="btn btn-g" onclick="hakedisKontrolBekleyenleri()">Kontrol Bekleyenler</button>
       <button class="btn btn-exp" onclick="exportHakedis()">↓ Export</button>
     </div>
   </div>
@@ -533,6 +534,12 @@
         <label class="ff"><span class="fl">Birim</span><input class="fi" id="ayar-birim"></label>
         <label class="ff full"><span class="fl">Logo URL (opsiyonel)</span><input class="fi" type="url" id="ayar-logo" placeholder="https://.../logo.png"></label>
       </div>
+    </section>
+    <section class="ozet-panel ayar-card">
+      <div class="ozet-panel-head">
+        <div><span>HAKEDİŞ ONAY BİLDİRİMLERİ</span><strong>E-posta ile kontrol talebi</strong></div>
+      </div>
+      <div class="ayar-help">Test alıcısı: eray.demircan@gumustasmaden.com.tr. Bildirim Outlook SMTP üzerinden sunucu tarafında gönderilir; mail ulaştırılamazsa hakediş “Kontrol Bekliyor” durumuna geçirilmez.</div>
     </section>
 
     <section class="ozet-panel ayar-card">
@@ -789,6 +796,6 @@
   </div>
 </div></div>
 
-<script type="module" src="./js/app.js?v=whatsapp-metraj-pilot-1"></script>
+<script type="module" src="./js/app.js?v=hakedis-onay-mail-1"></script>
 </body>
 </html>
