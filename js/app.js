@@ -4968,11 +4968,32 @@ delDurak = (id)=> requireAuth(()=>_delDurak(id));
 
 const _yeniAyBaslat = yeniAyBaslat;
 yeniAyBaslat = ()=> requireAuth(_yeniAyBaslat);
-function excelTarihSeri(tarih){
+function excelTarihDegeri(tarih){
   const match = String(tarih || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(!match) return '';
   const [, yil, ay, gun] = match;
-  return Date.UTC(Number(yil), Number(ay)-1, Number(gun)) / 86400000 + 25569;
+  return new Date(Date.UTC(Number(yil), Number(ay)-1, Number(gun)));
+}
+
+let excelJsPromise = null;
+function excelJsKutuphane(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if(excelJsPromise) return excelJsPromise;
+
+  excelJsPromise = new Promise((resolve,reject)=>{
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    script.onload = ()=>{
+      if(window.ExcelJS) resolve(window.ExcelJS);
+      else reject(new Error('Excel kütüphanesi yüklenemedi.'));
+    };
+    script.onerror = ()=>{
+      excelJsPromise = null;
+      reject(new Error('Excel kütüphanesi indirilemedi. İnternet bağlantınızı kontrol edin.'));
+    };
+    document.head.appendChild(script);
+  });
+  return excelJsPromise;
 }
 
 function exportMakineSatirlari(rec){
@@ -5001,7 +5022,41 @@ function exportMakineSatirlari(rec){
   }];
 }
 
-function exportExcelMakineSayfasi(XLSX, makine, kayitlar){
+const EXCEL_KIMLIK = {
+  koyu: 'FF231F20',
+  yazi: 'FFFFFFFF',
+  altin: 'FFE9CD53',
+  acikAltin: 'FFFBF6DA',
+  yesil: 'FFEAF1E5',
+  mavi: 'FFE8EEF6',
+  turuncu: 'FFFDF0E6',
+  arkaPlan: 'FFF5F5F7',
+  cizgi: 'FFD8D8D8',
+  metin: 'FF424245'
+};
+
+function excelHucreSiniri(){
+  return {
+    top: {style:'thin', color:{argb:EXCEL_KIMLIK.cizgi}},
+    left: {style:'thin', color:{argb:EXCEL_KIMLIK.cizgi}},
+    bottom: {style:'thin', color:{argb:EXCEL_KIMLIK.cizgi}},
+    right: {style:'thin', color:{argb:EXCEL_KIMLIK.cizgi}}
+  };
+}
+
+function excelTabloBasligi(ws, rowNumber, startColumn, endColumn, fillColor){
+  const row = ws.getRow(rowNumber);
+  row.height = 25;
+  for(let col=startColumn; col<=endColumn; col++){
+    const cell = row.getCell(col);
+    cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:fillColor}};
+    cell.font = {name:'Arial', size:10, bold:true, color:{argb:EXCEL_KIMLIK.yazi}};
+    cell.alignment = {vertical:'middle', horizontal:'center', wrapText:true};
+    cell.border = excelHucreSiniri();
+  }
+}
+
+function excelMakineSayfasi(ExcelJS, workbook, makine, kayitlar, firmaAdi, ayAdi){
   const rows = [
     [makine, 'LOKASYON', 'SONDAJ ADI', 'TARİH', 'FROM-TO', '', '', 'GÜNLÜK İLERLEME', 'DEPTH', 'DURUMU'],
     ['', '', '', '', '24-08', '08-16', '16-24', '', '', '']
@@ -5022,7 +5077,7 @@ function exportExcelMakineSayfasi(XLSX, makine, kayitlar){
       '',
       r.lokasyon,
       r.sondaj,
-      excelTarihSeri(r.tarih),
+      excelTarihDegeri(r.tarih),
       ...vardiyalar,
       toplam,
       r.depth == null || r.depth === '' ? '' : (parseFloat(r.depth) || 0),
@@ -5034,7 +5089,8 @@ function exportExcelMakineSayfasi(XLSX, makine, kayitlar){
   const toplamRow = rows.length + 1;
   rows.push(['', '', '', 'AYLIK İLERLEME TOPLAM=', '', '', '', aylikVardiya.reduce((sum,v)=>sum+v,0), '', '']);
   rows.push([]);
-  rows.push(['VARDİYA PERFORMANS TABLOSU']);
+  const performansBaslikRow = rows.length + 1;
+  rows.push([`${firmaAdi} · ${makine} · ${ayAdi} VARDİYA PERFORMANSI`]);
 
   const sonTarih = detaylar.reduce((son,r)=>r.tarih && r.tarih > son ? r.tarih : son, '');
   const gunlukVardiya = [0, 0, 0];
@@ -5042,27 +5098,92 @@ function exportExcelMakineSayfasi(XLSX, makine, kayitlar){
     r.shifts.forEach((v,i)=>{ if(v != null) gunlukVardiya[i] += v; });
   });
   const sonTarihLbl = sonTarih ? sonTarih.split('-').reverse().join('.') : '—';
+  const performansKolonBaslikRow = rows.length + 1;
   rows.push(['VARDİYA', '', `GÜNLÜK METRE (${sonTarihLbl})`, '', 'AYLIK METRE']);
+  const performansIlkVeriRow = rows.length + 1;
   ['00:00 - 08:00', '08:00 - 16:00', '16:00 - 00:00'].forEach((label,i)=>{
     rows.push([makine, label, gunlukVardiya[i], '', aylikVardiya[i]]);
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [
-    {wch:14}, {wch:25}, {wch:24}, {wch:13}, {wch:12},
-    {wch:12}, {wch:12}, {wch:20}, {wch:13}, {wch:55}
+  const sheet = workbook.addWorksheet(makine);
+  sheet.columns = [
+    {width:14}, {width:25}, {width:24}, {width:13}, {width:12},
+    {width:12}, {width:12}, {width:20}, {width:13}, {width:55}
   ];
-  for(let row=3; row<=detaylar.length+2; row++){
-    const dateCell = ws[`D${row}`];
-    if(dateCell && dateCell.v !== '') dateCell.z = 'dd.mm.yyyy';
-    ['E','F','G','H','I'].forEach(col=>{
-      const cell = ws[`${col}${row}`];
-      if(cell && typeof cell.v === 'number') cell.z = '0.00';
-    });
+  sheet.addRows(rows);
+  sheet.views = [{state:'frozen', ySplit:2, showGridLines:false}];
+  sheet.properties.defaultRowHeight = 20;
+  sheet.mergeCells('A1:A2');
+  sheet.mergeCells('B1:B2');
+  sheet.mergeCells('C1:C2');
+  sheet.mergeCells('D1:D2');
+  sheet.mergeCells('E1:G1');
+  sheet.mergeCells('H1:H2');
+  sheet.mergeCells('I1:I2');
+  sheet.mergeCells('J1:J2');
+  sheet.mergeCells(`D${toplamRow}:G${toplamRow}`);
+  sheet.mergeCells(`A${performansBaslikRow}:E${performansBaslikRow}`);
+  sheet.mergeCells(`A${performansKolonBaslikRow}:B${performansKolonBaslikRow}`);
+  sheet.mergeCells(`C${performansKolonBaslikRow}:D${performansKolonBaslikRow}`);
+
+  excelTabloBasligi(sheet, 1, 1, 10, EXCEL_KIMLIK.koyu);
+  excelTabloBasligi(sheet, 2, 5, 7, EXCEL_KIMLIK.altin);
+  for(let col=5; col<=7; col++){
+    sheet.getCell(2,col).font = {name:'Arial',size:10,bold:true,color:{argb:EXCEL_KIMLIK.koyu}};
   }
-  const totalCell = ws[`H${toplamRow}`];
-  if(totalCell) totalCell.z = '0.00';
-  return ws;
+  for(let row=3; row<=detaylar.length+2; row++){
+    const recordRow = sheet.getRow(row);
+    recordRow.height = 21;
+    for(let col=1; col<=10; col++){
+      const cell = recordRow.getCell(col);
+      cell.font = {name:'Arial',size:10,color:{argb:EXCEL_KIMLIK.metin}};
+      cell.alignment = {vertical:'middle',horizontal:col>=4&&col<=9?'center':'left',wrapText:col===10};
+      cell.border = excelHucreSiniri();
+      if((row-3)%2===1) cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.arkaPlan}};
+    }
+    recordRow.getCell(4).numFmt = 'dd.mm.yyyy';
+    for(let col=5; col<=9; col++) recordRow.getCell(col).numFmt = '#,##0.00';
+    [5,6,7].forEach((col,index)=>{
+      const colors=[EXCEL_KIMLIK.yesil,EXCEL_KIMLIK.mavi,EXCEL_KIMLIK.turuncu];
+      const cell=recordRow.getCell(col);
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:colors[index]}};
+      cell.font={name:'Arial',size:10,bold:true,color:{argb:EXCEL_KIMLIK.koyu}};
+    });
+    recordRow.getCell(8).font={name:'Arial',size:10,bold:true,color:{argb:EXCEL_KIMLIK.koyu}};
+  }
+
+  const totalRow = sheet.getRow(toplamRow);
+  totalRow.height = 25;
+  for(let col=4; col<=8; col++){
+    const cell=totalRow.getCell(col);
+    cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.acikAltin}};
+    cell.font={name:'Arial',size:11,bold:true,color:{argb:EXCEL_KIMLIK.koyu}};
+    cell.border=excelHucreSiniri();
+    cell.alignment={vertical:'middle',horizontal:col===8?'right':'left'};
+  }
+  totalRow.getCell(8).numFmt='#,##0.00';
+
+  const perfTitle=sheet.getRow(performansBaslikRow);
+  perfTitle.height=28;
+  const perfTitleCell=perfTitle.getCell(1);
+  perfTitleCell.fill={type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.koyu}};
+  perfTitleCell.font={name:'Arial',size:12,bold:true,color:{argb:EXCEL_KIMLIK.altin}};
+  perfTitleCell.alignment={vertical:'middle',horizontal:'left'};
+  excelTabloBasligi(sheet,performansKolonBaslikRow,1,5,EXCEL_KIMLIK.koyu);
+  for(let row=performansIlkVeriRow; row<performansIlkVeriRow+3; row++){
+    const perfRow=sheet.getRow(row);
+    perfRow.height=23;
+    for(let col=1; col<=5; col++){
+      const cell=perfRow.getCell(col);
+      cell.font={name:'Arial',size:10,bold:col===1||col===5,color:{argb:EXCEL_KIMLIK.metin}};
+      cell.alignment={vertical:'middle',horizontal:col>=3?'center':'left'};
+      cell.border=excelHucreSiniri();
+      if(col===5) cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.acikAltin}};
+    }
+    perfRow.getCell(3).numFmt='#,##0.00';
+    perfRow.getCell(5).numFmt='#,##0.00';
+  }
+  return sheet;
 }
 
 async function exportAy(){
@@ -5072,8 +5193,12 @@ async function exportAy(){
   const ayRecs = db.gunluk.filter(r=>ayFiltre(r.tarih));
   const ayDurak = db.duraklamalar.filter(d=>ayFiltre(d.tarih));
   try{
-    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
-    const workbook = XLSX.utils.book_new();
+    const ExcelJS = await excelJsKutuphane();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = getAppSettings().firma.firmaAdi;
+    workbook.company = getAppSettings().firma.firmaAdi;
+    workbook.subject = `${ayAdi} sondaj ve duraklama raporu`;
+    workbook.title = `${getAppSettings().firma.firmaAdi} · ${ayAdi} DDH Takip`;
     const machineNames = [];
     [...MAKINELER, ...getAppSettings().makineler.map(m=>m.ad), ...ayRecs.map(r=>r.makine)]
       .filter(Boolean)
@@ -5081,22 +5206,21 @@ async function exportAy(){
         if(!machineNames.some(existing=>makineEslesir(existing,name))) machineNames.push(name);
       });
     machineNames.forEach(makine=>{
-      XLSX.utils.book_append_sheet(workbook, exportExcelMakineSayfasi(XLSX, makine, ayRecs), makine.slice(0,31));
+      excelMakineSayfasi(ExcelJS,workbook,makine,ayRecs,getAppSettings().firma.firmaAdi,ayAdi);
     });
 
-    const durakRows = [
-      [`${appReportHead()} · ${ayAdi} YERALTI DURAKLAMALARI`],
-      ['MAKİNE', 'TARİH', 'SONDAJ NO', 'DURAKLAMA NEDENİ', '24-08', '08-16', '16-24', 'TOPLAM DURAKLAMA (DAKİKA)', 'SAAT ARALIKLARI', 'AÇIKLAMA']
-    ];
+    const durakWs = workbook.addWorksheet('YERALTI DURAKLAMALAR');
+    durakWs.addRow([`${getAppSettings().firma.firmaAdi.toLocaleUpperCase('tr-TR')} · ${ayAdi} YERALTI DURAKLAMALARI`]);
+    durakWs.addRow(['MAKİNE', 'TARİH', 'SONDAJ NO', 'DURAKLAMA NEDENİ', '24-08', '08-16', '16-24', 'TOPLAM DURAKLAMA (DAKİKA)', 'SAAT ARALIKLARI', 'AÇIKLAMA']);
     ayDurak.slice().sort((a,b)=>String(a.tarih).localeCompare(String(b.tarih))).forEach(d=>{
       const vardiyalar = [null, null, null];
       const vardiya = Number(d.vardiya);
       if(vardiya >= 1 && vardiya <= 3) vardiyalar[vardiya-1] = parseFloat(d.dk) || 0;
       const bas = d.basSaat || d.bas_saat || '';
       const bit = d.bitSaat || d.bit_saat || '';
-      durakRows.push([
+      durakWs.addRow([
         d.makine || '',
-        excelTarihSeri(d.tarih),
+        excelTarihDegeri(d.tarih),
         d.sondaj || '',
         d.neden || '',
         ...vardiyalar.map(v=>v == null ? '' : v),
@@ -5105,18 +5229,39 @@ async function exportAy(){
         temizDuraklamaAciklama(d.aciklama)
       ]);
     });
-    const durakWs = XLSX.utils.aoa_to_sheet(durakRows);
-    durakWs['!cols'] = [
-      {wch:17}, {wch:13}, {wch:20}, {wch:28}, {wch:12},
-      {wch:12}, {wch:12}, {wch:26}, {wch:22}, {wch:60}
+    durakWs.columns = [
+      {width:17}, {width:13}, {width:20}, {width:28}, {width:12},
+      {width:12}, {width:12}, {width:26}, {width:22}, {width:60}
     ];
-    for(let row=3; row<=durakRows.length; row++){
-      const dateCell = durakWs[`B${row}`];
-      if(dateCell && dateCell.v !== '') dateCell.z = 'dd.mm.yyyy';
+    durakWs.views=[{state:'frozen',ySplit:2,showGridLines:false}];
+    durakWs.mergeCells('A1:J1');
+    durakWs.getRow(1).height=34;
+    const durakTitle=durakWs.getCell('A1');
+    durakTitle.fill={type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.koyu}};
+    durakTitle.font={name:'Arial',size:14,bold:true,color:{argb:EXCEL_KIMLIK.altin}};
+    durakTitle.alignment={vertical:'middle',horizontal:'left'};
+    excelTabloBasligi(durakWs,2,1,10,EXCEL_KIMLIK.koyu);
+    for(let row=3; row<=durakWs.rowCount; row++){
+      const recordRow=durakWs.getRow(row);
+      recordRow.height=21;
+      recordRow.getCell(2).numFmt='dd.mm.yyyy';
+      for(let col=1; col<=10; col++){
+        const cell=recordRow.getCell(col);
+        cell.font={name:'Arial',size:10,color:{argb:EXCEL_KIMLIK.metin}};
+        cell.alignment={vertical:'middle',horizontal:col>=5&&col<=8?'center':'left',wrapText:col===10};
+        cell.border=excelHucreSiniri();
+        if(row%2===0) cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:EXCEL_KIMLIK.arkaPlan}};
+      }
+      for(let col=5; col<=7; col++){
+        const colors=[EXCEL_KIMLIK.yesil,EXCEL_KIMLIK.mavi,EXCEL_KIMLIK.turuncu];
+        const cell=recordRow.getCell(col);
+        cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:colors[col-5]}};
+      }
+      recordRow.getCell(8).numFmt='0';
+      recordRow.getCell(8).font={name:'Arial',size:10,bold:true,color:{argb:EXCEL_KIMLIK.koyu}};
     }
-    XLSX.utils.book_append_sheet(workbook, durakWs, 'YERALTI DURAKLAMALAR');
 
-    const file = XLSX.write(workbook, {bookType:'xlsx', type:'array'});
+    const file = await workbook.xlsx.writeBuffer();
     const blob = new Blob([file], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
