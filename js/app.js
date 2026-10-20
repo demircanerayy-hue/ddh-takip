@@ -3676,15 +3676,12 @@ function currentHakedisPricing(){
 function hakedisTariffForDate(tariffKey, date, fiyatSnapshot, kuyuNo){
   const dateBeforeDiscount = !!date && date < OPEX_DISCOUNT_START_DATE;
   const snapshotDate = fiyatSnapshot && String(fiyatSnapshot.tarih || '').slice(0,10);
-  const snapshotMatchesPeriod = !!snapshotDate && (
-    (dateBeforeDiscount && snapshotDate < OPEX_DISCOUNT_START_DATE) ||
-    (!dateBeforeDiscount && snapshotDate >= OPEX_DISCOUNT_START_DATE)
-  );
+  const snapshotMatchesPeriod = dateBeforeDiscount && !!snapshotDate && snapshotDate < OPEX_DISCOUNT_START_DATE;
   const snapshotTariffs = fiyatSnapshot && fiyatSnapshot.tarifeler;
   const sourceTariff = snapshotMatchesPeriod && snapshotTariffs
     ? (snapshotTariffs[tariffKey] || OPEX_TARIFFS[tariffKey])
     : OPEX_TARIFFS[tariffKey];
-  if(kuyuNo === 'BYA-947'){
+  if(kuyuNo === 'BYA-947' && String(date || '').startsWith('2026-07')){
     return Object.assign({},sourceTariff,{
       rates:sourceTariff.rates.map(band=>Object.assign({},band,{rate:70}))
     });
@@ -3697,10 +3694,7 @@ function hakedisRateForDate(rate, date, fiyatSnapshot, field){
   const snapshotDate = fiyatSnapshot && String(fiyatSnapshot.tarih || '').slice(0,10);
   const snapshotFinans = fiyatSnapshot && fiyatSnapshot.finans;
   const dateBeforeDiscount = !!date && date < OPEX_DISCOUNT_START_DATE;
-  const snapshotMatchesPeriod = !!snapshotDate && (
-    (dateBeforeDiscount && snapshotDate < OPEX_DISCOUNT_START_DATE) ||
-    (!dateBeforeDiscount && snapshotDate >= OPEX_DISCOUNT_START_DATE)
-  );
+  const snapshotMatchesPeriod = dateBeforeDiscount && !!snapshotDate && snapshotDate < OPEX_DISCOUNT_START_DATE;
   if(snapshotMatchesPeriod && snapshotFinans){
     return ayarNum(snapshotFinans[field], currentRate);
   }
@@ -3965,7 +3959,7 @@ function hakedisBuildRecords(){
     const tariffKey = opexTariffKey(kuyu.eg);
     const tariff = OPEX_TARIFFS[tariffKey];
     const fiyatSnapshot = hakedisFiyatSnapshotMap[no] || null;
-    const pricingFinans = fiyatSnapshot && fiyatSnapshot.finans ? fiyatSnapshot.finans : getAppSettings().finans;
+    const pricingFinans = getAppSettings().finans;
     const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
     const excelMetraj = excelDerinlikKuyusu(no) ? (parseFloat(kuyu.der) || 0) : 0;
     const otomatikMetraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
