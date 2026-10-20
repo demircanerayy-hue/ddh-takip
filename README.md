@@ -38,3 +38,9 @@ The initial pilot is restricted to `eray.demircan@gumustasmaden.com.tr` as
 both the test sender and approver. The same address is configured in the app
 and the server function. Do not add real approvers until role management and
 the server-side authorization rules are expanded beyond this single-user test.
+
+## Date-based tariff discount
+
+A 5% discount applies to drilling, waiting, and in-well measurement rates from
+September 1, 2026. Earlier records use undiscounted rates; records on or after
+that date use discounted rates. Legacy in-well measurements require a date

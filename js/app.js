@@ -3318,6 +3318,8 @@ function ozetGunlukMetraj(r){
 }
 
 let OPEX_WAIT_USD_PER_HOUR = 38;
+const OPEX_DISCOUNT_START_DATE = '2026-09-01';
+const OPEX_DISCOUNT_FACTOR = 0.95;
 let OPEX_TARIFFS = {
   steep: {
     label: 'Karotlu',
@@ -3358,6 +3360,21 @@ function opexTariffKey(egim){
 function opexRateAtDepth(tariff, depth){
   const bands = tariff.rates;
   return (bands.find(b => depth >= b.from && depth < b.to) || bands[bands.length - 1]).rate;
+}
+
+function opexTariffForDate(tariff, date, useUndiscountedRate){
+  if(!tariff || !Array.isArray(tariff.rates) || !useUndiscountedRate || !date || date >= OPEX_DISCOUNT_START_DATE) return tariff;
+  const defaultTariff = Object.values(DEFAULT_APP_SETTINGS.tarifeler).find(item=>item.label===tariff.label);
+  const isDefaultRate = defaultTariff && tariff.rates.length === defaultTariff.rates.length &&
+    tariff.rates.every((band,index)=>
+      band.from === defaultTariff.rates[index].from &&
+      band.to === defaultTariff.rates[index].to &&
+      band.rate === defaultTariff.rates[index].rate
+    );
+  if(isDefaultRate) return tariff;
+  return Object.assign({},tariff,{
+    rates:tariff.rates.map(band=>Object.assign({},band,{rate:band.rate/OPEX_DISCOUNT_FACTOR}))
+  });
 }
 
 function opexDepthBandLabel(band, isLast){
@@ -3439,7 +3456,7 @@ function ozetOpexSummary(period){
       const kuyu = opexFindKuyu(e.no);
       if(!kuyu) missing += ozetInPeriod(r.tarih, period) ? e.metre : 0;
       const key = opexTariffKey(kuyu && kuyu.eg);
-      const tariff = OPEX_TARIFFS[key];
+      const tariff = opexTariffForDate(OPEX_TARIFFS[key], r.tarih, true);
       const start = depthByKuyu[e.no] || parseFloat(kuyu && (kuyu.bm || kuyu.guncelBaslangic)) || 0;
       const parts = opexDrillingParts(e.metre, start, tariff);
       const cost = parts.reduce((s,p) => s + p.cost, 0);
@@ -3637,10 +3654,17 @@ function hakedisKesintiOf(no){
 }
 
 // Bir kuyunun manuel Kuyu İçi Ölçüm metrajı ve USD tutarı
-function hakedisOlcumOf(no, rateUsd){
-  const metraj = Math.max(0, parseFloat(hakedisOlcumMap[no]) || 0);
-  const rate = isFinite(rateUsd) ? rateUsd : HAKEDIS_KIO_RATE_USD;
-  return { metraj, rate, usd: metraj * rate };
+function hakedisOlcumOf(no, rateUsd, fiyatSnapshot){
+  const raw = hakedisOlcumMap[no];
+  const entry = raw && typeof raw === 'object' ? raw : {metraj:raw};
+  const metraj = Math.max(0, parseFloat(entry.metraj) || 0);
+  const tarih = String(entry.tarih || '');
+  const tarihDate = /^\d{4}-\d{2}-\d{2}$/.test(tarih) ? new Date(`${tarih}T00:00:00Z`) : null;
+  const tarihGecerli = !!tarihDate && !Number.isNaN(tarihDate.getTime()) && tarihDate.toISOString().slice(0,10) === tarih;
+  const tarihEksik = metraj > 0 && !tarihGecerli;
+  const baseRate = isFinite(rateUsd) ? rateUsd : HAKEDIS_KIO_RATE_USD;
+  const rate = tarihEksik ? 0 : hakedisRateForDate(baseRate,tarih,fiyatSnapshot,'kuyuIciOlcumUsdMetre');
+  return { metraj, rate, usd: tarihEksik ? 0 : metraj * rate, tarih, tarihEksik };
 }
 
 function duraklamaSaat(dakika){
@@ -3650,6 +3674,35 @@ function duraklamaSaat(dakika){
 function currentHakedisPricing(){
   const cfg = getAppSettings();
   return {tarifeler:cloneJson(cfg.tarifeler),finans:cloneJson(cfg.finans),tarih:new Date().toISOString()};
+}
+
+function hakedisTariffForDate(tariffKey, date, fiyatSnapshot){
+  const dateBeforeDiscount = !!date && date < OPEX_DISCOUNT_START_DATE;
+  const snapshotDate = fiyatSnapshot && String(fiyatSnapshot.tarih || '').slice(0,10);
+  const snapshotMatchesPeriod = !!snapshotDate && (
+    (dateBeforeDiscount && snapshotDate < OPEX_DISCOUNT_START_DATE) ||
+    (!dateBeforeDiscount && snapshotDate >= OPEX_DISCOUNT_START_DATE)
+  );
+  const snapshotTariffs = fiyatSnapshot && fiyatSnapshot.tarifeler;
+  const sourceTariff = snapshotMatchesPeriod && snapshotTariffs
+    ? (snapshotTariffs[tariffKey] || OPEX_TARIFFS[tariffKey])
+    : OPEX_TARIFFS[tariffKey];
+  return opexTariffForDate(sourceTariff, date, dateBeforeDiscount && !snapshotMatchesPeriod);
+}
+
+function hakedisRateForDate(rate, date, fiyatSnapshot, field){
+  const currentRate = ayarNum(rate, 0);
+  const snapshotDate = fiyatSnapshot && String(fiyatSnapshot.tarih || '').slice(0,10);
+  const snapshotFinans = fiyatSnapshot && fiyatSnapshot.finans;
+  const dateBeforeDiscount = !!date && date < OPEX_DISCOUNT_START_DATE;
+  const snapshotMatchesPeriod = !!snapshotDate && (
+    (dateBeforeDiscount && snapshotDate < OPEX_DISCOUNT_START_DATE) ||
+    (!dateBeforeDiscount && snapshotDate >= OPEX_DISCOUNT_START_DATE)
+  );
+  if(snapshotMatchesPeriod && snapshotFinans){
+    return ayarNum(snapshotFinans[field], currentRate);
+  }
+  return dateBeforeDiscount ? currentRate / OPEX_DISCOUNT_FACTOR : currentRate;
 }
 
 function ensureHakedisFiyatSnapshot(no){
@@ -3735,7 +3788,24 @@ function setHakedisKesinti(no, field, val){
 function setHakedisOlcum(no, val){
   const durum = hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM;
   if(!hakedisKesintiEditable(durum)) return; // Taslak/Revize İstendi dışında kilitli
-  hakedisOlcumMap[no] = hakedisParseNum(val);
+  const raw = hakedisOlcumMap[no];
+  const entry = raw && typeof raw === 'object' ? Object.assign({},raw) : {metraj:raw,tarih:''};
+  entry.metraj = hakedisParseNum(val);
+  hakedisOlcumMap[no] = entry;
+  hakedisSaveStatus();
+  renderHakedis();
+}
+
+function setHakedisOlcumTarih(no, val){
+  const raw = hakedisOlcumMap[no];
+  const entry = raw && typeof raw === 'object' ? Object.assign({},raw) : {metraj:raw,tarih:''};
+  const durum = hakedisStatusMap[no] || HAKEDIS_DEFAULT_DURUM;
+  if(!hakedisKesintiEditable(durum) && entry.tarih) return;
+  const date = String(val || '').trim();
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+  if(date && (!parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== date)) return;
+  entry.tarih = date;
+  hakedisOlcumMap[no] = entry;
   hakedisSaveStatus();
   renderHakedis();
 }
@@ -3872,12 +3942,21 @@ function hakedisKuyuList(){
 // Her kuyu için kademeli (derinlik aralığı bazlı) OPEX / hakediş kaydı üretir
 function hakedisBuildRecords(){
   const metrajByKuyu = {};
+  const metrajRowsByKuyu = {};
   const gunlerByKuyu = {};
   (db.gunluk || []).forEach(r => {
     opexGunlukKuyuEntries(r).forEach(e => {
       const no = String(e.no || '').trim();
       if(!no || no === '-') return;
-      metrajByKuyu[no] = (metrajByKuyu[no] || 0) + (parseFloat(e.metre) || 0);
+      const metre = parseFloat(e.metre) || 0;
+      metrajByKuyu[no] = (metrajByKuyu[no] || 0) + metre;
+      if(metre > 0){
+        (metrajRowsByKuyu[no] = metrajRowsByKuyu[no] || []).push({
+          tarih:String(r.tarih || ''),
+          id:Number(r.id) || 0,
+          metre
+        });
+      }
       if(r.tarih){ (gunlerByKuyu[no] = gunlerByKuyu[no] || new Set()).add(r.tarih); }
     });
   });
@@ -3889,38 +3968,60 @@ function hakedisBuildRecords(){
     if(!kuyu) return;
     const no = String(kuyu.no || '').trim();
     if(!no) return;
-    durakByKuyu[no] = (durakByKuyu[no] || 0) + (parseFloat(d.dk) || 0);
+    const tarih = String(d.tarih || '');
+    const rows = durakByKuyu[no] = durakByKuyu[no] || [];
+    const existing = rows.find(row=>row.tarih===tarih);
+    if(existing) existing.dakika += parseFloat(d.dk) || 0;
+    else rows.push({tarih,dakika:parseFloat(d.dk)||0});
   });
 
   return Object.keys(metrajByKuyu).map(no => {
     const kuyu = opexFindKuyu(no) || {};
     const tariffKey = opexTariffKey(kuyu.eg);
+    const tariff = OPEX_TARIFFS[tariffKey];
     const fiyatSnapshot = hakedisFiyatSnapshotMap[no] || null;
-    const pricingTariffs = fiyatSnapshot && fiyatSnapshot.tarifeler ? fiyatSnapshot.tarifeler : OPEX_TARIFFS;
     const pricingFinans = fiyatSnapshot && fiyatSnapshot.finans ? fiyatSnapshot.finans : getAppSettings().finans;
-    const tariff = pricingTariffs[tariffKey] || OPEX_TARIFFS[tariffKey];
     const startDepth = parseFloat(kuyu.bm || kuyu.guncelBaslangic) || 0;
     const excelMetraj = excelDerinlikKuyusu(no) ? (parseFloat(kuyu.der) || 0) : 0;
     const otomatikMetraj = excelMetraj > 0 ? excelMetraj : (metrajByKuyu[no] || 0);
     const metrajSecimi = hakedisMetrajOf(no, otomatikMetraj);
     const metraj = metrajSecimi.metraj;
-    const parts = opexDrillingParts(metraj, startDepth, tariff);
-    // parts -> derinlik aralıklı satırlar (kademeli tarife)
+    const metrajRows = (metrajRowsByKuyu[no] || []).slice().sort((a,b)=>
+      a.tarih.localeCompare(b.tarih) || a.id-b.id
+    );
+    const dailyMetraj = metrajRows.reduce((sum,row)=>sum+row.metre,0);
+    const metrajScale = dailyMetraj > 0 ? metraj/dailyMetraj : 1;
     let d = startDepth;
-    const bands = parts.map(p => {
-      const from = d;
-      const to = d + p.metre;
-      d = to;
-      const tier = tariff.rates[p.bandIndex] || tariff.rates[tariff.rates.length - 1];
-      const tierLabel = opexDepthBandLabel(tier, p.bandIndex === tariff.rates.length - 1);
-      return { from, to, metre:p.metre, rate:p.rate, cost:p.cost, tierLabel };
+    const bands = [];
+    metrajRows.forEach(row=>{
+      const rowMetraj = row.metre * metrajScale;
+      const tariff = hakedisTariffForDate(tariffKey, row.tarih, fiyatSnapshot);
+      opexDrillingParts(rowMetraj, d, tariff).forEach(part=>{
+        const from = d;
+        const to = d + part.metre;
+        d = to;
+        const tier = tariff.rates[part.bandIndex] || tariff.rates[tariff.rates.length - 1];
+        bands.push({
+          from,
+          to,
+          metre:part.metre,
+          rate:part.rate,
+          cost:part.cost,
+          tierLabel:opexDepthBandLabel(tier, part.bandIndex === tariff.rates.length - 1)
+        });
+      });
     });
     const drilling = bands.reduce((s,b)=>s+b.cost,0);
-    const durakMin = durakByKuyu[no] || 0;
-    const waitRate = ayarNum(pricingFinans.beklemeUsdSaat, OPEX_WAIT_USD_PER_HOUR);
-    const kioRate = ayarNum(pricingFinans.kuyuIciOlcumUsdMetre, HAKEDIS_KIO_RATE_USD);
-    const waiting = duraklamaSaat(durakMin) * waitRate;
-    const kio = hakedisOlcumOf(no, kioRate);
+    const durakRows = durakByKuyu[no] || [];
+    const durakMin = durakRows.reduce((sum,row)=>sum+row.dakika,0);
+    const baseWaitRate = ayarNum(pricingFinans.beklemeUsdSaat, OPEX_WAIT_USD_PER_HOUR);
+    const baseKioRate = ayarNum(pricingFinans.kuyuIciOlcumUsdMetre, HAKEDIS_KIO_RATE_USD);
+    const waiting = durakRows.reduce((sum,row)=>
+      sum + duraklamaSaat(row.dakika) * hakedisRateForDate(baseWaitRate,row.tarih,fiyatSnapshot,'beklemeUsdSaat'),0
+    );
+    const waitRate = durakMin ? waiting/duraklamaSaat(durakMin) : baseWaitRate;
+    const kio = hakedisOlcumOf(no, baseKioRate, fiyatSnapshot);
+    const kioRate = kio.rate;
     const kesinti = 0; // Veri modeli kesintiyi desteklemiyor; ileride girilebilir
     const brut = drilling + waiting + kio.usd;
     const net = brut - kesinti;
@@ -3941,6 +4042,7 @@ function hakedisBuildRecords(){
       startDepth, metraj, otomatikMetraj, metrajManuel:metrajSecimi.manuelMi, metrajMeta:metrajSecimi, bands, drilling,
       durakMin, waitRate, waiting, kesinti, brut, net, avg, verim,
       kuyuIciMetraj: kio.metraj, kuyuIciRate:kio.rate, kuyuIciUsd: kio.usd,
+      kuyuIciTarih:kio.tarih, kuyuIciTarihEksik:kio.tarihEksik,
       kdvOrani:ayarNum(pricingFinans.kdvYuzde, HAKEDIS_KDV_ORANI*100)/100,
       tevkifatOrani:ayarNum(pricingFinans.tevkifatYuzde, HAKEDIS_TEVKIFAT_ORANI*100)/100,
       fiyatSnapshot,
@@ -4085,6 +4187,10 @@ function hakedisArsivKaydet(){
     if(message){ message.textContent='Seçilen kuyular için hakediş kaydı bulunamadı.'; message.className='ayar-msg error'; }
     return;
   }
+  if(records.some(rec=>rec.kuyuIciTarihEksik)){
+    if(message){ message.textContent='Arşivlemeden önce her kuyunun kuyu içi ölçüm tarihini girin.'; message.className='ayar-msg error'; }
+    return;
+  }
   const samePeriod = hakedisArsivler.filter(snapshot=>snapshot.ay===ay);
   const byRegion = new Map();
   records.forEach((rec,index)=>{
@@ -4155,7 +4261,7 @@ function renderHakedisArsiv(records){
         <td class="c">${ozetFmt(rec.metraj,1)} m</td>
         <td class="c">${opexFmtUsd(rec.brut)}</td>
         <td class="c">${opexFmtUsd(rec.waiting)}</td>
-        <td class="c">${ozetFmt(rec.kuyuIciMetraj,1)} m</td>
+        <td class="c">${ozetFmt(rec.kuyuIciMetraj,1)} m${rec.kuyuIciTarih ? `<br><small>${esc(rec.kuyuIciTarih)}</small>` : ''}</td>
         <td class="c">${finance.valid?hakedisFmtTl(finance.hakedisTl):'Kur girilmemiş'}</td>
         <td class="c">${finance.valid?hakedisFmtTl(finance.kesintiTl):'Kur girilmemiş'}</td>
         <td class="c">${finance.valid?hakedisFmtTl(finance.netHakedisTl):'Kur girilmemiş'}</td>
@@ -4262,6 +4368,11 @@ async function hakedisKontrolMailiGonder(records){
 }
 
 async function hakedisAction(no, toDurum){
+  const rec = hakedisBuildRecords().find(row=>row.no===no);
+  if(rec && rec.kuyuIciTarihEksik){
+    alert('İşleme devam etmeden önce kuyu içi ölçüm tarihini girin.');
+    return;
+  }
   const user = ((document.getElementById('auth-user')?.textContent) || '').trim() || '-';
   const bugun = new Date().toISOString().slice(0,10);
   const meta = Object.assign({}, hakedisMetaMap[no] || {});
@@ -4282,7 +4393,6 @@ async function hakedisAction(no, toDurum){
     delete hakedisFiyatSnapshotMap[no];
   }
   if(toDurum === 'Kontrol Bekliyor'){
-    const rec = hakedisBuildRecords().find(row=>row.no===no);
     if(!rec){ alert('Hakediş kaydı bulunamadı; bildirim gönderilmedi.'); return; }
     try{
       await hakedisKontrolMailiGonder([rec]);
@@ -4326,6 +4436,10 @@ async function hakedisBulkKontrol(){
     hakedisSelectedKuyular.includes(rec.no) && rec.durum === 'Taslak'
   );
   if(!records.length) return;
+  if(records.some(rec=>rec.kuyuIciTarihEksik)){
+    alert('Kontrole göndermeden önce seçili kuyuların kuyu içi ölçüm tarihlerini girin.');
+    return;
+  }
   try{
     await hakedisKontrolMailiGonder(records);
   }catch(e){
@@ -4460,7 +4574,7 @@ function renderHakedisSummaryTable(rows){
     <td class="c">${hakedisMetrajCell(r)}</td>
     <td class="c">${opexFmtUsd(r.brut)}</td>
     <td class="c">${ozetFmt(r.kuyuIciMetraj,1)} m</td>
-    <td class="c">${opexFmtUsd(r.kuyuIciUsd)}</td>
+    <td class="c">${opexFmtUsd(r.kuyuIciUsd)}${r.kuyuIciTarihEksik ? '<br><small style="color:var(--danger)">Tarih gerekli</small>' : ''}</td>
     <td class="c">${tlCell(f,'hakedisTl')}</td>
     <td class="c">${hakedisFmtTl(kes.toplam)}</td>
     <td class="c">${tlCell(f,'netHakedisTl')}</td>
@@ -4574,7 +4688,7 @@ function hakedisDetailTableHtml(rec){
     <td>${esc(rec.no)}</td>
     <td>${esc(rec.makine)}</td>
     <td>${esc(rec.firma)}</td>
-    <td>Kuyu İçi Ölçüm</td>
+    <td>Kuyu İçi Ölçüm${rec.kuyuIciTarih ? `<br><small>${esc(rec.kuyuIciTarih)}</small>` : ''}</td>
     <td class="c">—</td>
     <td class="c">—</td>
     <td class="c">—</td>
@@ -4659,9 +4773,11 @@ function renderHakedisMultiTable(rows){
     const acts = hakedisActionButtons(r.no, r.durum);
     const f = hakedisFinansForRec(r);
     const kioEditable = hakedisKesintiEditable(r.durum);
-    const kioCell = kioEditable
-      ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${r.kuyuIciMetraj > 0 ? esc(ozetFmt(r.kuyuIciMetraj,1)) : ''}" placeholder="0" onchange="setHakedisOlcum('${esc(r.no)}',this.value)">`
-      : `${ozetFmt(r.kuyuIciMetraj,1)} m`;
+    const kioCell = `<div style="display:grid;gap:4px;min-width:130px">
+      ${kioEditable ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${r.kuyuIciMetraj > 0 ? esc(ozetFmt(r.kuyuIciMetraj,1)) : ''}" placeholder="0" onchange="setHakedisOlcum('${esc(r.no)}',this.value)">` : `${ozetFmt(r.kuyuIciMetraj,1)} m`}
+      ${hakedisOlcumTarihInput(r.no,r.kuyuIciTarih,kioEditable,r.kuyuIciTarihEksik)}
+      ${r.kuyuIciTarihEksik ? '<small style="color:var(--danger)">Ölçüm tarihi gerekli</small>' : ''}
+    </div>`;
     const main = `<tr>
       <td>${esc(r.no)}</td>
       <td>${esc(r.locGroup)}</td>
@@ -4722,6 +4838,11 @@ function hakedisFinansRow(label, value, strong){
   return `<div class="hakedis-finans-row${strong ? ' hakedis-finans-total' : ''}"><span>${esc(label)}</span><b>${value}</b></div>`;
 }
 
+function hakedisOlcumTarihInput(no, tarih, editable, tarihEksik){
+  if(!editable && !tarihEksik) return hakedisFmtDate(tarih);
+  return `<input class="fi hakedis-kesinti-inp" type="date" value="${esc(tarih||'')}" aria-label="Kuyu içi ölçüm tarihi" onchange="setHakedisOlcumTarih('${esc(no)}',this.value)">`;
+}
+
 function hakedisFinansBlockHtml(f, opts){
   const o = opts || {};
   const kes = o.kesinti || {elektrik:0, motorin:0, servis:0, toplam:0};
@@ -4734,16 +4855,19 @@ function hakedisFinansBlockHtml(f, opts){
   const kioMetrajCell = kio.editable
     ? `<input class="fi hakedis-kesinti-inp" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="${kio.metraj > 0 ? esc(ozetFmt(kio.metraj,1)) : ''}" placeholder="0" onchange="setHakedisOlcum('${esc(kio.no)}',this.value)">`
     : `${ozetFmt(kio.metraj,1)} m`;
+  const kioTarihCell = hakedisOlcumTarihInput(kio.no,kio.tarih,kio.editable,kio.tarihEksik);
   const kioTlLabel = o.kioTitle || 'Kuyu İçi Ölçüm Metrajı';
   const kioTutarTlLabel = o.kioTutarTlLabel || 'Kuyu İçi Ölçüm Tutarı TL';
-  const kioRateText = isFinite(o.kioRate) ? `$${o.kioRate}/m` : 'Kuyu bazlı tarifeye göre';
+  const kioRateText = kio.tarihEksik ? 'Tarih girilmeli' : (isFinite(o.kioRate) ? `$${o.kioRate}/m` : 'Kuyu bazlı tarifeye göre');
   const waitRateText = isFinite(o.waitRate) ? `$${o.waitRate}/sa` : 'Kuyu bazlı tarifeye göre';
   const kdvLabel = isFinite(o.kdvYuzde) ? `KDV (%${ozetFmt(o.kdvYuzde,0)}) TL` : 'KDV TL';
   const tevkifatLabel = isFinite(o.tevkifatYuzde) ? `Tevkifat (%${ozetFmt(o.tevkifatYuzde,0)}) TL` : 'Tevkifat TL';
   const kioTl = f.valid ? hakedisFmtTl(kio.usd * hakedisKur) : '<span style="color:var(--text3)">Kur giriniz</span>';
   return `<div class="hakedis-finans">
     ${hakedisFinansRow(kioTlLabel, kioMetrajCell)}
+    ${hakedisFinansRow('Kuyu İçi Ölçüm Tarihi', kioTarihCell)}
     ${hakedisFinansRow('Kuyu İçi Ölçüm Birim Fiyatı', kioRateText)}
+    ${kio.tarihEksik ? hakedisFinansRow('Uyarı', '<span style="color:var(--danger)">Eski ölçümün hesabı için tarih girin.</span>') : ''}
     ${hakedisFinansRow(o.kioUsdLabel || 'Kuyu İçi Ölçüm Tutarı USD', opexFmtUsd(kio.usd))}
     ${hakedisFinansRow(kioTutarTlLabel, kioTl)}
     <div class="hakedis-finans-sep"></div>
@@ -4774,7 +4898,7 @@ function renderHakedisFinans(mode, data){
     const f = hakedisFinansForRec(rec);
     const kes = hakedisKesintiOf(rec.no);
     const editable = hakedisKesintiEditable(rec.durum);
-    const kio = {metraj:rec.kuyuIciMetraj, usd:rec.kuyuIciUsd, editable, no:rec.no};
+    const kio = {metraj:rec.kuyuIciMetraj, usd:rec.kuyuIciUsd, editable, no:rec.no, tarih:rec.kuyuIciTarih, tarihEksik:rec.kuyuIciTarihEksik};
     const durak = {dk:rec.durakMin||0, usd:rec.waiting||0};
     wrap.innerHTML = `<div class="ozet-panel" style="margin-top:16px">
       <div class="ozet-panel-head">
@@ -4942,6 +5066,12 @@ function exportHakedis(){
   const kurLine = `Dolar Kuru (USD/TL): ${hakedisKur > 0 ? hakedisFmtKur(hakedisKur) : 'girilmedi'}`;
   const head = appReportHead();
   const sel = hakedisSelectedKuyular.filter(no => records.some(r => r.no === no));
+  const exportRecords = sel.length ? records.filter(r=>sel.includes(r.no)) : records;
+  const missingKioDates = exportRecords.filter(rec=>rec.kuyuIciTarihEksik);
+  if(missingKioDates.length){
+    alert(`Export öncesinde şu kuyuların kuyu içi ölçüm tarihini girin: ${missingKioDates.map(rec=>rec.no).join(', ')}`);
+    return;
+  }
 
   // A) Tek kuyu → detaylı OPEX maliyet tablosu
   if(sel.length === 1){
@@ -5970,6 +6100,7 @@ window.setHakedisKur = setHakedisKur;
 window.setHakedisKesinti = setHakedisKesinti;
 window.setHakedisTopluKesinti = setHakedisTopluKesinti;
 window.setHakedisOlcum = setHakedisOlcum;
+window.setHakedisOlcumTarih = setHakedisOlcumTarih;
 window.openHakedisMetraj = openHakedisMetraj;
 window.closeHakedisMetraj = closeHakedisMetraj;
 window.saveHakedisMetraj = saveHakedisMetraj;
