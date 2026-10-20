@@ -42,7 +42,7 @@ const GECMIS_DUZENLEME_KILIT_GUN = 7;
 // ── VERİ ────────────────────────────────────────────────────
 const SK = 'ddh2_v1';
 const APP_SETTINGS_CACHE_KEY = 'ddh_app_settings_v1';
-let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}, hakedis:{}, ayarlar:null, ayarGecmisi:[]};
+let db = {kuyular:[], gunluk:[], duraklamalar:[], butce:{}, hakedis:{}, whatsappTabanlari:{}, ayarlar:null, ayarGecmisi:[]};
 let nextId = 1;
 let editKId = null;
 let aktifMakine = 'GS-200';
@@ -372,6 +372,7 @@ function firebasePayload(){
     nextId,
     butce:           db.butce || {},
     hakedis:         db.hakedis || {},
+    whatsappTabanlari: db.whatsappTabanlari || {},
     ayarlar:         db.ayarlar || normalizeAppSettings(null),
     ayarGecmisi:     db.ayarGecmisi || [],
     durakResetV:     db.durakResetV || 0,
@@ -494,6 +495,9 @@ function applySavedData(data){
   normalizeDbMakineAdlari();
   db.butce = data.butce || db.butce || {};
   db.hakedis = data.hakedis || db.hakedis || {};
+  db.whatsappTabanlari = data.whatsappTabanlari && typeof data.whatsappTabanlari === 'object' && !Array.isArray(data.whatsappTabanlari)
+    ? data.whatsappTabanlari
+    : (db.whatsappTabanlari || {});
   db.ayarGecmisi = Array.isArray(data.ayarGecmisi) ? data.ayarGecmisi : (db.ayarGecmisi || []);
   applyRuntimeSettings(data.ayarlar || db.ayarlar || null);
   db.durakResetV = data.durakResetV || 0;
@@ -926,6 +930,282 @@ function makineAyMetraj(makine, ay){
     if(r.kuyular) r.kuyular.forEach(k => { toplam += parseFloat(k.ilerleme)||0; });
   });
   return toplam;
+}
+
+let waMetrajOnizleme = [];
+
+function waKuyuAnahtari(no){
+  return normalizeKuyuNo(no);
+}
+
+function waDerinlikSayisi(deger){
+  const raw = String(deger ?? '').trim().replace(/\s/g,'');
+  if(!raw) return NaN;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g,'').replace(',','.')
+    : raw;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function waZamanEtiketi(date){
+  if(!(date instanceof Date) || Number.isNaN(date.getTime())) return 'Geçersiz zaman';
+  return date.toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function waVardiyaNo(date){
+  const hour = date.getHours();
+  return hour < 8 ? 1 : hour < 16 ? 2 : 3;
+}
+
+function waYerelTarih(date){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
+function waTarihSaatAyristir(line,fallback){
+  const match = String(line || '').match(/^\s*\[?(\d{1,2})[./-](\d{1,2})[./-](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\]?\s*(?:-\s*)?/);
+  if(!match) return {date:fallback, message:String(line || ''), detected:false};
+  let year = Number(match[3]);
+  if(year < 100) year += year < 70 ? 2000 : 1900;
+  const date = new Date(year,Number(match[2])-1,Number(match[1]),Number(match[4]),Number(match[5]),Number(match[6]||0));
+  if(Number.isNaN(date.getTime())) return {date:fallback,message:String(line || ''),detected:false};
+  return {date,message:String(line).slice(match[0].length),detected:true};
+}
+
+function waGunlukBaslangic(no,date){
+  const day = waYerelTarih(date);
+  const rows = (db.gunluk || [])
+    .filter(r=>r.tarih && r.tarih<=day && normalizeKuyuNo(r.sondaj)===no)
+    .sort((a,b)=>String(a.tarih).localeCompare(String(b.tarih)) || (a.id||0)-(b.id||0));
+  if(rows.length){
+    for(let i=rows.length-1;i>=0;i--){
+      const depth = Number(rows[i].depth);
+      if(rows[i].depth != null && rows[i].depth !== '' && Number.isFinite(depth)) return depth;
+    }
+    return rows.reduce((sum,r)=>sum+(parseFloat(r.s1)||0)+(parseFloat(r.s2)||0)+(parseFloat(r.s3)||0),0);
+  }
+  let legacyTotal = 0;
+  let legacyFound = false;
+  (db.gunluk || []).filter(r=>r.tarih && r.tarih<=day).forEach(r=>{
+    (r.kuyular || []).forEach(k=>{
+      if(normalizeKuyuNo(k.no)===no){
+        legacyFound = true;
+        legacyTotal += parseFloat(k.ilerleme)||0;
+      }
+    });
+  });
+  return legacyFound ? legacyTotal : null;
+}
+
+function waBilinenTaban(no,date){
+  const tracked = db.whatsappTabanlari && db.whatsappTabanlari[no];
+  if(tracked && Number.isFinite(Number(tracked.derinlik))){
+    const at = tracked.at ? new Date(tracked.at) : null;
+    if(at && !Number.isNaN(at.getTime()) && date < at) return {stale:true,depth:Number(tracked.derinlik)};
+    return {stale:false,depth:Number(tracked.derinlik)};
+  }
+  const daily = waGunlukBaslangic(no,date);
+  return {stale:false,depth:daily};
+}
+
+function waMakineBul(no){
+  const kuyu = (db.kuyular || []).find(k=>normalizeKuyuNo(k.no)===no);
+  return kuyu ? (kuyu.makine || '') : '';
+}
+
+function waMesajlariAyristir(){
+  const input = document.getElementById('wa-message-input');
+  const fallbackInput = document.getElementById('wa-fallback-at');
+  const container = document.getElementById('wa-message-preview');
+  if(!input || !fallbackInput || !container) return;
+  if(!fallbackInput.value){
+    const now = new Date();
+    fallbackInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  }
+  const fallback = new Date(fallbackInput.value);
+  if(Number.isNaN(fallback.getTime())){
+    container.innerHTML = '<div style="color:var(--red);padding:8px">Varsayılan tarih ve saati kontrol et.</div>';
+    return;
+  }
+  const lines = input.value.split(/\r?\n/).filter(line=>line.trim());
+  const found = [];
+  const unrecognized = [];
+  lines.forEach((line,index)=>{
+    const parsedTime = waTarihSaatAyristir(line,fallback);
+    const match = parsedTime.message.match(/\b(BYA[\s-]?\d+)\s+KUYU\s+TABANI\s*[:：-]?\s*([\d.,]+)\s*(?:MT\b|M\b)/i);
+    if(!match){ unrecognized.push(line); return; }
+    const depth = waDerinlikSayisi(match[2]);
+    const no = normalizeKuyuNo(match[1]);
+    const locationMatch = parsedTime.message.slice(match.index + match[0].length).match(/^\s*\(([^)]+)\)/);
+    found.push({
+      sourceLine:index,
+      kuyu:no,
+      derinlik:depth,
+      lokasyon:locationMatch ? locationMatch[1].trim() : '',
+      at:parsedTime.date,
+      machine:waMakineBul(no),
+      overrideSet:false,
+      override:undefined
+    });
+  });
+  found.sort((a,b)=>a.at-b.at || a.sourceLine-b.sourceLine);
+  waMetrajOnizleme = found;
+  waMetrajOnizleme.unrecognized = unrecognized;
+  waMetrajOnizlemeGoster();
+}
+
+function waOnizlemeGuncelle(input){
+  const index = Number(input.dataset.index);
+  const entry = waMetrajOnizleme[index];
+  if(!entry) return;
+  if(input.dataset.field === 'machine') entry.machine = input.value;
+  if(input.dataset.field === 'time'){
+    const at = new Date(input.value);
+    if(!Number.isNaN(at.getTime())) entry.at = at;
+  }
+  if(input.dataset.field === 'previous'){
+    entry.overrideSet = input.value !== '';
+    entry.override = input.value === '' ? undefined : waDerinlikSayisi(input.value);
+  }
+  waMetrajOnizleme.sort((a,b)=>a.at-b.at || a.sourceLine-b.sourceLine);
+  waMetrajOnizlemeGoster();
+}
+
+function waMetrajOnizlemeGoster(){
+  const container = document.getElementById('wa-message-preview');
+  if(!container) return;
+  if(!waMetrajOnizleme.length){
+    const skipped = (waMetrajOnizleme.unrecognized || []).length;
+    container.innerHTML = `<div style="padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--text2)">“KUYU TABANI” ve metresi bulunan mesaj bulunamadı.${skipped?` ${skipped} satır tanınmadı.`:''}</div>`;
+    return;
+  }
+  const machines = [...new Set([...MAKINELER,...aktifMakineListesi(),...(db.kuyular||[]).map(k=>k.makine).filter(Boolean)])];
+  const latestByWell = new Map();
+  const rows = waMetrajOnizleme.map((entry,index)=>{
+    const key = waKuyuAnahtari(entry.kuyu);
+    const known = latestByWell.has(key) ? null : waBilinenTaban(key,entry.at);
+    const previous = entry.overrideSet ? entry.override : (latestByWell.has(key) ? latestByWell.get(key).depth : known.depth);
+    const stale = !entry.overrideSet && !latestByWell.has(key) && known.stale;
+    const delta = Number.isFinite(previous) && Number.isFinite(entry.derinlik) ? entry.derinlik - previous : NaN;
+    const vardiya = entry.at instanceof Date && !Number.isNaN(entry.at.getTime()) ? waVardiyaNo(entry.at) : 0;
+    let status = 'Hazır';
+    if(!Number.isFinite(entry.derinlik) || entry.derinlik < 0) status = 'Yeni taban geçersiz';
+    else if(stale) status = 'Eski mesaj: son kaydedilen taban daha yeni';
+    else if(!Number.isFinite(previous)) status = 'Önceki tabanı gir';
+    else if(delta < -0.001) status = 'Taban gerilemiş: metraj eklenmez';
+    else if(!entry.machine) status = 'Makine seç';
+    else if(delta <= 0.001) status = 'Yeni ilerleme yok';
+    else status = `+${delta.toFixed(2)} m · V${vardiya}`;
+    entry.previewPrevious = previous;
+    entry.previewDelta = delta;
+    entry.previewStale = stale;
+    entry.previewStatus = status;
+    entry.previewShift = vardiya;
+    if(Number.isFinite(entry.derinlik) && Number.isFinite(previous) && !stale && delta >= -0.001){
+      latestByWell.set(key,{depth:entry.derinlik,at:entry.at});
+    }
+    const machineOptions = `<option value="">Makine seç</option>` + machines.map(machine=>`<option value="${esc(machine)}" ${machine===entry.machine?'selected':''}>${esc(machine)}</option>`).join('');
+    const previousValue = Number.isFinite(previous) ? previous : '';
+    const timeValue = entry.at instanceof Date && !Number.isNaN(entry.at.getTime())
+      ? `${entry.at.getFullYear()}-${String(entry.at.getMonth()+1).padStart(2,'0')}-${String(entry.at.getDate()).padStart(2,'0')}T${String(entry.at.getHours()).padStart(2,'0')}:${String(entry.at.getMinutes()).padStart(2,'0')}`
+      : '';
+    const color = status.startsWith('+') ? 'var(--green)' : status==='Yeni ilerleme yok' ? 'var(--text3)' : 'var(--warn)';
+    return `<tr>
+      <td style="white-space:nowrap">${esc(entry.kuyu)}</td>
+      <td><select class="fi" data-index="${index}" data-field="machine" onchange="waOnizlemeGuncelle(this)" style="min-width:130px">${machineOptions}</select></td>
+      <td><input class="fi" type="number" min="0" step="0.01" value="${previousValue}" data-index="${index}" data-field="previous" onchange="waOnizlemeGuncelle(this)" style="width:100px" placeholder="Gerekli"></td>
+      <td style="white-space:nowrap">${Number(entry.derinlik).toFixed(2)} m</td>
+      <td><input class="fi" type="datetime-local" value="${timeValue}" data-index="${index}" data-field="time" onchange="waOnizlemeGuncelle(this)" style="min-width:190px"></td>
+      <td style="white-space:nowrap">${vardiya ? `V${vardiya}` : '—'}</td>
+      <td style="font-weight:700;color:${color};white-space:nowrap">${esc(status)}</td>
+    </tr>`;
+  }).join('');
+  const fresh = waMetrajOnizleme.filter(entry=>entry.previewStatus && entry.previewStatus.startsWith('+')).length;
+  const canApprove = fresh>0 && waMetrajOnizleme.every(entry=>
+    entry.previewStatus && (entry.previewStatus.startsWith('+') || entry.previewStatus === 'Yeni ilerleme yok')
+  );
+  const skipped = (waMetrajOnizleme.unrecognized || []).length;
+  container.innerHTML = `<div style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--bg3);text-align:left">
+        <th style="padding:8px">Kuyu</th><th style="padding:8px">Makine</th><th style="padding:8px">Önceki taban (m)</th><th style="padding:8px">Yeni taban</th><th style="padding:8px">Mesaj tarihi/saati</th><th style="padding:8px">Vardiya</th><th style="padding:8px">Hesap</th>
+      </tr></thead><tbody>${rows}</tbody>
+    </table>
+  </div>
+  ${skipped?`<div style="margin-top:8px;color:var(--warn);font-size:11px">${skipped} satır “BYA-xxx KUYU TABANI: ... MT” biçimiyle eşleşmedi ve aktarılmayacak.</div>`:''}
+  <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">${fresh} metraj satırı onaya hazır. Eşit okumalar yeni metraj oluşturmaz; gerileyen veya bazsız okumalar kaydedilmez.</span>
+    <button class="btn btn-p" type="button" onclick="waMetrajOnayla()" ${canApprove?'':'disabled'}>Onayla ve Kaydet</button>
+  </div>`;
+}
+
+function waGunlukMetrajEkle(entry,previous,delta,vardiya){
+  const field = `s${vardiya}`;
+  const day = waYerelTarih(entry.at);
+  const existing = db.gunluk.find(r=>r.makine===entry.machine && r.tarih===day && normalizeKuyuNo(r.sondaj)===entry.kuyu);
+  const note = `WhatsApp kuyu tabanı ${previous.toFixed(2)}→${entry.derinlik.toFixed(2)} m`;
+  if(existing){
+    existing[field] = parseFloat(((parseFloat(existing[field])||0)+delta).toFixed(2));
+    existing.toplam = (parseFloat(existing.s1)||0)+(parseFloat(existing.s2)||0)+(parseFloat(existing.s3)||0);
+    existing.depth = entry.derinlik;
+    existing.basDepth = previous;
+    if(entry.lokasyon) existing.Lokasyon = entry.lokasyon;
+    existing.not = [existing.not,note].filter(Boolean).join(' · ');
+    return;
+  }
+  db.gunluk.push({
+    id:uid(),
+    makine:entry.machine,
+    tarih:day,
+    Lokasyon:entry.lokasyon || '',
+    sondaj:entry.kuyu,
+    s1:vardiya===1?delta:null,
+    s2:vardiya===2?delta:null,
+    s3:vardiya===3?delta:null,
+    toplam:delta,
+    basDepth:previous,
+    depth:entry.derinlik,
+    not:note
+  });
+}
+
+function waMetrajOnayla(){
+  if(!waMetrajOnizleme.length) return;
+  const calculated = [];
+  const latestByWell = new Map();
+  for(const entry of waMetrajOnizleme){
+    const key = waKuyuAnahtari(entry.kuyu);
+    const known = latestByWell.has(key) ? {} : waBilinenTaban(key,entry.at);
+    const previous = entry.overrideSet ? entry.override : (latestByWell.has(key) ? latestByWell.get(key).depth : known.depth);
+    if((known.stale && !entry.overrideSet && !latestByWell.has(key)) || !Number.isFinite(previous) || !Number.isFinite(entry.derinlik) || entry.derinlik < previous-0.001 || !entry.machine || !(entry.at instanceof Date) || Number.isNaN(entry.at.getTime())){
+      alert('Aktarım durduruldu: makineyi, mesaj saatini ve önceki tabanı kontrol et. Tabanı gerileyen kayıt metraj olarak eklenemez.');
+      return;
+    }
+    const delta = parseFloat((entry.derinlik-previous).toFixed(2));
+    const vardiya = waVardiyaNo(entry.at);
+    calculated.push({entry,previous,delta,vardiya});
+    latestByWell.set(key,{depth:entry.derinlik,at:entry.at});
+  }
+  const positive = calculated.filter(row=>row.delta>0.001);
+  if(!positive.length){
+    alert('Yeni ilerleme bulunamadı; metraj kaydı oluşturulmadı.');
+    return;
+  }
+  calculated.forEach(({entry,previous,delta,vardiya})=>{
+    if(delta>0.001) waGunlukMetrajEkle(entry,previous,delta,vardiya);
+    db.whatsappTabanlari[waKuyuAnahtari(entry.kuyu)] = {
+      derinlik:entry.derinlik,
+      at:entry.at.toISOString(),
+      makine:entry.machine,
+      lokasyon:entry.lokasyon || ''
+    };
+  });
+  save();
+  renderAll();
+  document.getElementById('wa-message-input').value = '';
+  waMetrajOnizleme = [];
+  waMetrajOnizlemeGoster();
+  showToast('WhatsApp metrajları kaydedildi',`${positive.length} vardiya kaydı · ${positive.reduce((sum,row)=>sum+row.delta,0).toFixed(2)} m`);
 }
 
 // ── AY FİLTRE ───────────────────────────────────────────────
@@ -5404,6 +5684,9 @@ window.removeAyarMakine = removeAyarMakine;
 window.saveAppSettings = saveAppSettings;
 window.loadDefaultSettingsForm = loadDefaultSettingsForm;
 window.loadPreviousSettingsForm = loadPreviousSettingsForm;
+window.waMesajlariAyristir = waMesajlariAyristir;
+window.waOnizlemeGuncelle = waOnizlemeGuncelle;
+window.waMetrajOnayla = waMetrajOnayla;
 document.addEventListener('click', hakedisOutsideClick);
 
 // ── INIT ────────────────────────────────────────────────────
