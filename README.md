@@ -55,8 +55,9 @@ toplamlar ve kuyu detaylarını içerir. Aynı bölge ve ay için tekrar kaydetm
 Delgi, bekleme ve kuyu içi ölçüm poz tarifelerinde %5 indirim 1 Eylül 2026
 itibarıyla geçerlidir. Tamamlanmış kuyuların tüm delgi metrajı ve kuyu içi
 ölçüm fiyatı kuyu bitiş tarihindeki tarifeye göre belirlenir; tamamlanmamış
-kuyularda delgi günlük kayıt tarihini izler. Bekleme fiyatı her zaman bekleme
-kayıt tarihini izler. Eylül 2026 ve sonrası hesaplarda tarife ve finans
+kuyularda delgi günlük kayıt tarihini izler. Tamamlanmış kuyularda tüm bekleme
+süresine kuyu bitiş ayının fiyatı; tamamlanmamış kuyularda bekleme kayıt
+tarihinin fiyatı uygulanır. Eylül 2026 ve sonrası hesaplarda tarife ve finans
 tutarları Ayarlar'daki güncel değerlerden alınır; kontrol anında alınmış eski
 fiyat snapshot'ları bu döneme uygulanmaz. Arşiv ayı seçimi mevcut toplam
 hakedişi etiketler.

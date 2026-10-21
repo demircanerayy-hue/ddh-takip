@@ -3999,7 +3999,7 @@ function hakedisBuildRecords(){
     const baseWaitRate = ayarNum(pricingFinans.beklemeUsdSaat, OPEX_WAIT_USD_PER_HOUR);
     const baseKioRate = ayarNum(pricingFinans.kuyuIciOlcumUsdMetre, HAKEDIS_KIO_RATE_USD);
     const waiting = durakRows.reduce((sum,row)=>
-      sum + duraklamaSaat(row.dakika) * hakedisRateForDate(baseWaitRate,row.tarih,fiyatSnapshot,'beklemeUsdSaat'),0
+      sum + duraklamaSaat(row.dakika) * hakedisRateForDate(baseWaitRate,kuyu.bit || row.tarih,fiyatSnapshot,'beklemeUsdSaat'),0
     );
     const waitRate = durakMin ? waiting/duraklamaSaat(durakMin) : baseWaitRate;
     const kio = hakedisOlcumOf(no, baseKioRate, fiyatSnapshot, kuyu.bit);
