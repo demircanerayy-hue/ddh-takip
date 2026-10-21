@@ -39,8 +39,30 @@ both the test sender and approver. The same address is configured in the app
 and the server function. Do not add real approvers until role management and
 the server-side authorization rules are expanded beyond this single-user test.
 
-## Date-based tariff discount
+Microsoft's current Exchange Online Basic authentication policy is documented
+at [Deprecation of Basic authentication in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online).
 
-A 5% discount applies to drilling, waiting, and in-well measurement rates from
-September 1, 2026. Earlier records use undiscounted rates; records on or after
-that date use discounted rates. Legacy in-well measurements require a date
+## Aylık hakediş arşivi
+
+Hakediş ekranında bir veya daha fazla kuyu seçim menüsünden seçilip ay
+belirlendikten sonra “Seçili Kuyuları Arşivle” ile o anki hesapların değişmez
+kopyaları kaydedilir. Kuyular tek ay etiketiyle arşivlenir, ancak ayrı bölge
+başlıklarına (ör. Bolkar-1 · Ekim 2026 ve Bolkar-2 · Ekim 2026) bölünür. Her
+kayıt kullanıcı/zaman, USD/TL kuru, metraj, bekleme, kesintiler, finansal
+toplamlar ve kuyu detaylarını içerir. Aynı bölge ve ay için tekrar kaydetmek
+önceki kopyayı değiştirmez; yeni bir arşiv girdisi oluşturur.
+
+Delgi, bekleme ve kuyu içi ölçüm poz tarifelerinde %5 indirim 1 Eylül 2026
+itibarıyla geçerlidir. Tamamlanmış kuyuların tüm delgi metrajı ve kuyu içi
+ölçüm fiyatı kuyu bitiş tarihindeki tarifeye göre belirlenir; tamamlanmamış
+kuyularda delgi günlük kayıt tarihini izler. Bekleme fiyatı her zaman bekleme
+kayıt tarihini izler. Eylül 2026 ve sonrası hesaplarda tarife ve finans
+tutarları Ayarlar'daki güncel değerlerden alınır; kontrol anında alınmış eski
+fiyat snapshot'ları bu döneme uygulanmaz. Arşiv ayı seçimi mevcut toplam
+hakedişi etiketler.
+
+BYA-947 kuyusunun Temmuz 2026 hakedişindeki tüm delgi metrajı, derinlik
+kademelerinden bağımsız olarak $70/m birim fiyatla hesaplanır.
+
+Arşiv, mevcut hakediş verisiyle aynı Firebase veri kaydında tutulur ve yerel
+yedekleme akışına da dahildir. Bu özellik e-posta gönderimi gerektirmez.

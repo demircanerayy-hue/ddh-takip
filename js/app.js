@@ -3974,7 +3974,8 @@ function hakedisBuildRecords(){
     const bands = [];
     metrajRows.forEach(row=>{
       const rowMetraj = row.metre * metrajScale;
-      const tariff = hakedisTariffForDate(tariffKey, row.tarih, fiyatSnapshot, no);
+      const tariffDate = kuyu.bit || row.tarih;
+      const tariff = hakedisTariffForDate(tariffKey, tariffDate, fiyatSnapshot, no);
       opexDrillingParts(rowMetraj, d, tariff).forEach(part=>{
         const from = d;
         const to = d + part.metre;
