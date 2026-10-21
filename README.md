@@ -61,6 +61,11 @@ tutarları Ayarlar'daki güncel değerlerden alınır; kontrol anında alınmı�
 fiyat snapshot'ları bu döneme uygulanmaz. Arşiv ayı seçimi mevcut toplam
 hakedişi etiketler.
 
+İSG kesintisi finansal özette diğer TL kesintileri gibi kuyu bazında veya
+çoklu kuyu seçiminde ortak tutar olarak girilir. Kesinti finansal hesapta,
+CSV dışa aktarımlarında ve yeni arşiv kayıtlarında yer alır; önceden
+kaydedilmiş arşiv snapshot'ları değişmez.
+
 BYA-947 kuyusunun Temmuz 2026 hakedişindeki tüm delgi metrajı, derinlik
 kademelerinden bağımsız olarak $70/m birim fiyatla hesaplanır.
 
